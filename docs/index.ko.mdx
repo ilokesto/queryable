@@ -1,0 +1,25 @@
+---
+title: Queryable
+description: 비공개 베타 Symbol 기반 레코드 쿼리.
+---
+
+# Queryable
+
+버전 **0.0.1**, 비공개 베타입니다. 이 문서는 소스와 함께 보관하며 공개 문서
+사이트에는 등록하지 않습니다.
+
+```ts
+import { createQueryable, WHERE, MAP, VALUES } from "@ilokesto/queryable";
+
+const names = createQueryable({ alice: { name: "Alice", age: 25 } })
+  [WHERE](user => user.age >= 20)
+  [MAP](user => user.name)
+  [VALUES]();
+```
+
+전체 연산과 계약은 `../README.ko.md`를 참고하세요. `SELECT`는 `PICK`으로
+변경했으며 값의 필드가 아닌 레코드 키를 고릅니다. `SORT`는 숫자형 키도 비교
+순서를 보존하는 `QuerySequence`를 반환합니다. `LAZY`는 소비할 때마다 재평가하는
+지연 모드입니다. `FIND`·`SOME`은 조기 종료 탐색, `REDUCE`는 집계,
+`ENTRIES`·`TO_OBJECT`는 데이터 추출에 사용합니다. 메서드는 receiver가 필요하고
+얕은 복사는 중첩 값을 공유합니다. 벤치마크 방법과 결과는 `../bench/`에 있습니다.

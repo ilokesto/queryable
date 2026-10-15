@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "node": "v26.7.0",
+    "v8": "14.6.202.34-node.28",
+    "remeda": "2.51.0"
+  },
+  "machine": {
+    "platform": "darwin",
+    "release": "27.2.0",
+    "arch": "arm64",
+    "cpu": "Apple M2 Max",
+    "logicalCpus": 12,
+    "totalMemoryBytes": 34359738368
+  },
+  "options": {
+    "rows": 5000,
+    "instances": 5000,
+    "smallSize": 4,
+    "iterations": 10,
+    "rounds": 5,
+    "warmups": 2,
+    "earlyLimit": true
+  },
+  "elapsedMs": 2108.870042,
+  "methodology": {
+    "isolation": "one fresh sequential Node --expose-gc child per case",
+    "timing": "warmups then repeated retained batches; median; GC outside timer",
+    "heap": "separate repeated batches; post-GC heapUsed delta with results retained",
+    "heapIsTotalAllocation": false,
+    "queryConstructionIncluded": false,
+    "constructionBaselines": "native JS and Remeda have no DSL wrapper; not applicable",
+    "proxyOwnership": "references pre-existing input; prototype constructors shallow-copy",
+    "methodClosures": "Proxy method accesses allocate closures; construction does not retain them"
+  },
+  "results": [
+    {
+      "case": "construction/article-proxy",
+      "validated": true,
+      "unitsPerBatch": 5000,
+      "unit": "instance",
+      "timingSamplesMs": [
+        0.16362499999999613,
+        0.1630830000000003,
+        0.11175000000000068,
+        0.1598329999999919,
+        0.1527500000000117
+      ],
+      "medianBatchMs": 0.1598329999999919,
+      "medianMicrosecondsPerUnit": 0.03196659999999838,
+      "retainedHeapSamplesBytes": [
+        623472,
+        640000,
+        639968,
+        640016,
+        640200
+      ],
+      "medianRetainedHeapBytes": 640000,
+      "medianRetainedHeapBytesPerUnit": 128,
+      "checksum": 40,
+      "methodIdentity": {
+        "instances": 1000,
+        "observedMethodsPerInstance": 2,
+        "distinctFunctions": 2000
+      }
+    },
+    {
+      "case": "construction/old-prototype-entries",
+      "validated": true,
+      "unitsPerBatch": 5000,
+      "unit": "instance",
+      "timingSamplesMs": [
+        0.8494169999999954,
+        0.9613750000000039,
+        0.8482910000000032,
+        0.8411249999999981,
+        0.8410839999999951
+      ],
+      "medianBatchMs": 0.8482910000000032,
+      "medianMicrosecondsPerUnit": 0.16965820000000065,
+      "retainedHeapSamplesBytes": [
+        279992,
+        280000,
+        281472,
+        280016,
+        280200
+      ],
+      "medianRetainedHeapBytes": 280016,
+      "medianRetainedHeapBytesPerUnit": 56.0032,
+      "checksum": 40,
+      "methodIdentity": {
+        "instances": 1000,
+        "observedMethodsPerInstance": 2,
+        "distinctFunctions": 2
+      }
+    },
+    {
+      "case": "construction/new-eager",
+      "validated": true,
+      "unitsPerBatch": 5000,
+      "unit": "instance",
+      "timingSamplesMs": [
+        0.49116699999999724,
+        0.39733400000000074,
+        0.43820799999999593,
+        0.385666999999998,
+        0.3582499999999982
+      ],
+      "medianBatchMs": 0.39733400000000074,
+      "medianMicrosecondsPerUnit": 0.07946680000000014,
+      "retainedHeapSamplesBytes": [
+        279808,
+        280000,
+        279968,
+        280016,
+        280200
+      ],
+      "medianRetainedHeapBytes": 280000,
+      "medianRetainedHeapBytesPerUnit": 56,
+      "checksum": 40,
+      "methodIdentity": {
+        "instances": 1000,
+        "observedMethodsPerInstance": 2,
+        "distinctFunctions": 2
+      }
+    },
+    {
+      "case": "full-filter/article-proxy",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        14.263709000000006,
+        12.970916000000003,
+        13.148582999999988,
+        12.686000000000007,
+        13.155040999999983
+      ],
+      "medianBatchMs": 13.148582999999988,
+      "medianMicrosecondsPerUnit": 1314.8582999999987,
+      "retainedHeapSamplesBytes": [
+        200648,
+        200448,
+        200448,
+        200496,
+        200680
+      ],
+      "medianRetainedHeapBytes": 200496,
+      "medianRetainedHeapBytesPerUnit": 20049.6,
+      "checksum": 25000,
+      "validationCallbackCounts": {
+        "predicate": 5000,
+        "mapper": 0
+      }
+    },
+    {
+      "case": "full-filter/old-prototype-entries",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        11.811250000000001,
+        11.582041000000004,
+        14.298000000000002,
+        11.880540999999994,
+        12.137124999999997
+      ],
+      "medianBatchMs": 11.880540999999994,
+      "medianMicrosecondsPerUnit": 1188.0540999999994,
+      "retainedHeapSamplesBytes": [
+        200368,
+        210512,
+        194264,
+        200424,
+        210640
+      ],
+      "medianRetainedHeapBytes": 200424,
+      "medianRetainedHeapBytesPerUnit": 20042.4,
+      "checksum": 25000,
+      "validationCallbackCounts": {
+        "predicate": 5000,
+        "mapper": 0
+      }
+    },
+    {
+      "case": "full-filter/new-eager",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        11.496792,
+        9.813249999999996,
+        9.685916000000006,
+        11.780124999999998,
+        9.699416
+      ],
+      "medianBatchMs": 9.813249999999996,
+      "medianMicrosecondsPerUnit": 981.3249999999996,
+      "retainedHeapSamplesBytes": [
+        263328,
+        266240,
+        263336,
+        266096,
+        270584
+      ],
+      "medianRetainedHeapBytes": 266096,
+      "medianRetainedHeapBytesPerUnit": 26609.6,
+      "checksum": 25000,
+      "validationCallbackCounts": {
+        "predicate": 5000,
+        "mapper": 0
+      }
+    },
+    {
+      "case": "full-filter/native-values-filter",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        6.98958300000001,
+        6.795124999999999,
+        7.757707999999994,
+        6.939625000000007,
+        7.223500000000001
+      ],
+      "medianBatchMs": 6.98958300000001,
+      "medianMicrosecondsPerUnit": 698.958300000001,
+      "retainedHeapSamplesBytes": [
+        235960,
+        235968,
+        235968,
+        236016,
+        236200
+      ],
+      "medianRetainedHeapBytes": 235968,
+      "medianRetainedHeapBytesPerUnit": 23596.8,
+      "checksum": 25000,
+      "validationCallbackCounts": {
+        "predicate": 5000,
+        "mapper": 0
+      }
+    },
+    {
+      "case": "full-filter/remeda-values-filter",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        6.917000000000002,
+        6.957708999999994,
+        6.737250000000003,
+        6.905000000000001,
+        7.015500000000003
+      ],
+      "medianBatchMs": 6.917000000000002,
+      "medianMicrosecondsPerUnit": 691.7000000000002,
+      "retainedHeapSamplesBytes": [
+        235960,
+        235968,
+        235968,
+        236016,
+        236200
+      ],
+      "medianRetainedHeapBytes": 235968,
+      "medianRetainedHeapBytesPerUnit": 23596.8,
+      "checksum": 25000,
+      "validationCallbackCounts": {
+        "predicate": 5000,
+        "mapper": 0
+      }
+    },
+    {
+      "case": "early-limit/new-eager",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        12.252083999999996,
+        12.173915999999991,
+        13.604458000000008,
+        12.039874999999995,
+        12.849042000000026
+      ],
+      "medianBatchMs": 12.252083999999996,
+      "medianMicrosecondsPerUnit": 1225.2083999999998,
+      "retainedHeapSamplesBytes": [
+        2568,
+        2248,
+        5000,
+        2368,
+        5264
+      ],
+      "medianRetainedHeapBytes": 2568,
+      "medianRetainedHeapBytesPerUnit": 256.8,
+      "checksum": 50,
+      "validationCallbackCounts": {
+        "predicate": 5000,
+        "mapper": 2500
+      }
+    },
+    {
+      "case": "early-limit/new-lazy",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        2.677250000000001,
+        2.774791999999991,
+        2.644915999999995,
+        2.719583,
+        2.7475419999999957
+      ],
+      "medianBatchMs": 2.719583,
+      "medianMicrosecondsPerUnit": 271.9583,
+      "retainedHeapSamplesBytes": [
+        8720,
+        2320,
+        2288,
+        5024,
+        2552
+      ],
+      "medianRetainedHeapBytes": 2552,
+      "medianRetainedHeapBytesPerUnit": 255.2,
+      "checksum": 50,
+      "validationCallbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      }
+    },
+    {
+      "case": "early-limit/native-loop-early-stop",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        2.744624999999992,
+        2.7343330000000066,
+        2.6662919999999986,
+        2.9436659999999932,
+        2.9362919999999946
+      ],
+      "medianBatchMs": 2.744624999999992,
+      "medianMicrosecondsPerUnit": 274.46249999999924,
+      "retainedHeapSamplesBytes": [
+        1800,
+        1840,
+        1808,
+        1856,
+        8432
+      ],
+      "medianRetainedHeapBytes": 1840,
+      "medianRetainedHeapBytesPerUnit": 184,
+      "checksum": 50,
+      "validationCallbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      }
+    },
+    {
+      "case": "early-limit/remeda-values-pipe",
+      "validated": true,
+      "unitsPerBatch": 10,
+      "unit": "query",
+      "timingSamplesMs": [
+        6.4248329999999925,
+        6.349708000000007,
+        6.164417,
+        6.368166000000002,
+        6.633583999999999
+      ],
+      "medianBatchMs": 6.368166000000002,
+      "medianMicrosecondsPerUnit": 636.8166000000002,
+      "retainedHeapSamplesBytes": [
+        1800,
+        1808,
+        1808,
+        6544,
+        2040
+      ],
+      "medianRetainedHeapBytes": 1808,
+      "medianRetainedHeapBytesPerUnit": 180.8,
+      "checksum": 50,
+      "validationCallbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      }
+    }
+  ]
+}

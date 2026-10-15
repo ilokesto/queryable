@@ -1,0 +1,35 @@
+{
+  "name": "@ilokesto/queryable",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Private beta: a shared-prototype, Symbol-based record query DSL.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json",
+    "test": "vitest run",
+    "bench": "pnpm build && node --expose-gc bench/benchmark.mjs --early-limit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ilokesto/ilokesto.git",
+    "directory": "packages/queryable"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "remeda": "2.51.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.10"
+  }
+}

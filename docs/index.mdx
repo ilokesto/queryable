@@ -1,0 +1,26 @@
+---
+title: Queryable
+description: Private beta Symbol-based record queries.
+---
+
+# Queryable
+
+Version **0.0.1**, private beta. These docs stay beside the source and are not
+registered in the public documentation site.
+
+```ts
+import { createQueryable, WHERE, MAP, VALUES } from "@ilokesto/queryable";
+
+const names = createQueryable({ alice: { name: "Alice", age: 25 } })
+  [WHERE](user => user.age >= 20)
+  [MAP](user => user.name)
+  [VALUES]();
+```
+
+See `../README.md` for all operations and their contracts. `PICK` replaces
+`SELECT` and picks record keys rather than value fields. `SORT` returns an ordered
+`QuerySequence`, preserving comparator order even for integer-index keys.
+`LAZY` opts into repeatable deferred evaluation; terminals consume pending work.
+Use `FIND`/`SOME` for short-circuit lookup, `REDUCE` for aggregation, and
+`ENTRIES`/`TO_OBJECT` for extraction. Methods require their receiver and shallow
+copies share nested values. Benchmark methodology and results live under `../bench/`.
