@@ -2,7 +2,11 @@
 
 **0.0.1 · Private beta.** A record query DSL with shared Symbol-keyed methods, ordered sequences, and opt-in lazy evaluation. No runtime dependencies.
 
-This package is local to the pnpm workspace (`private: true`). It is not registered in the npm publisher or the public documentation site. No package has been published. To consume it from another workspace package, add `"@ilokesto/queryable": "workspace:*"` to that package's dependencies and build it.
+This standalone repository remains private (`private: true`). It is not
+registered with the npm publisher or public release documentation, and no
+version has been published. The local authoring site documents the `next`
+channel only. Other repositories cannot consume this package through a
+cross-checkout workspace link.
 
 ```ts
 import { createQueryable, WHERE, SORT, LIMIT, MAP, VALUES } from "@ilokesto/queryable";
@@ -100,10 +104,11 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 ## Development
 
 ```sh
-pnpm --filter @ilokesto/queryable typecheck
-pnpm --filter @ilokesto/queryable test
-pnpm --filter @ilokesto/queryable build
-pnpm --filter @ilokesto/queryable bench
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm bench
 ```
 
 Based on Ayden's [Proxy/prototype memory experiment](https://ayden94.com/posts/memory-cost-proxy-and-prototype), specifically its final implementation. The beta adds safe special keys, ordered sequences, explicit receiver types, short-circuiting, and regression tests.

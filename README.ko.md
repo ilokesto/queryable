@@ -2,7 +2,10 @@
 
 **0.0.1 · 비공개 베타.** 공유 Symbol 메서드, 순서를 보장하는 시퀀스, 선택적 지연 평가를 제공하는 레코드 쿼리 DSL입니다. 런타임 의존성은 없습니다.
 
-`private: true`를 유지하며 npm 배포 목록과 공개 문서 사이트에는 등록하지 않았습니다. 다른 워크스페이스에서 사용하려면 의존성에 `"@ilokesto/queryable": "workspace:*"`를 추가하고 빌드하세요.
+이 저장소는 독립된 비공개 저장소이며 `private: true`를 유지합니다. npm
+배포 목록이나 공개 출시 문서에 등록하지 않았고, 어떤 버전도 배포하지
+않았습니다. 로컬 작성 사이트는 `next` 채널만 표시합니다. 다른 저장소에서
+체크아웃 간 workspace 링크로 이 패키지를 가져올 수는 없습니다.
 
 ```ts
 import { createQueryable, WHERE, SORT, LIMIT, MAP, VALUES } from "@ilokesto/queryable";
@@ -99,10 +102,11 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 ## 개발·벤치마크
 
 ```sh
-pnpm --filter @ilokesto/queryable typecheck
-pnpm --filter @ilokesto/queryable test
-pnpm --filter @ilokesto/queryable build
-pnpm --filter @ilokesto/queryable bench
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm bench
 ```
 
 [측정 방법](./bench/README.md)과 [실측 결과](./bench/RESULTS.md)를 참고하세요. Remeda는 비교용 개발 의존성일 뿐 런타임 의존성이 아닙니다.
