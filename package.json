@@ -3,9 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "packageManager": "pnpm@10.17.1",
-  "engines": {
-    "node": ">=22"
-  },
   "description": "Private beta: a shared-prototype, Symbol-based record query DSL.",
   "type": "module",
   "sideEffects": false,
