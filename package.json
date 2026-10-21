@@ -18,10 +18,18 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json",
-    "test": "vitest run",
+    "test": "vitest run src",
+    "test:tooling": "node --test tests/tooling/*.test.mjs",
     "bench": "pnpm build && node --expose-gc bench/benchmark.mjs --early-limit",
     "migrate:verify": "node scripts/verify-migration.mjs all",
-    "release:verify": "node scripts/release-verify.mjs"
+    "release:verify": "node scripts/release-verify.mjs",
+    "docs:prepare": "pnpm build && pnpm --dir website exec fumadocs-mdx",
+    "docs:build": "pnpm docs:prepare && pnpm --dir website build",
+    "docs:typecheck": "pnpm docs:prepare && pnpm --dir website typecheck",
+    "docs:test": "pnpm --dir website test",
+    "docs:start": "pnpm --dir website start",
+    "docs:http": "node scripts/docs-http.mjs",
+    "docs:publication:verify": "node scripts/docs-publication.mjs verify"
   },
   "repository": {
     "type": "git",

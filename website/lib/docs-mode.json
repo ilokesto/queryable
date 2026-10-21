@@ -1,0 +1,11 @@
+{
+  "mode": "private-authoring-only",
+  "package": "queryable",
+  "channel": "next",
+  "locales": ["en", "ko"],
+  "canonicalDocs": "../docs",
+  "publicCollections": [],
+  "releasedCollections": [],
+  "runtimeAliases": [],
+  "publisherWorkflows": []
+}

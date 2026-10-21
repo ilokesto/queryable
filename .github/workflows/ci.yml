@@ -1,0 +1,93 @@
+name: Verify
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      expected_head_sha:
+        description: Exact immutable main SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: verify-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate immutable event head before checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_BASE: ${{ github.event.pull_request.base.ref }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha || github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$GITHUB_REPOSITORY" == "ilokesto/queryable" ]] || exit 1
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              [[ "$EVENT_REF" == "refs/heads/main" ]] || exit 1
+              [[ "$GITHUB_SHA" == "$EXPECTED_HEAD_SHA" ]] || exit 1
+              live="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+              [[ "$live" == "$EXPECTED_HEAD_SHA" ]] || exit 1
+              ;;
+            pull_request)
+              [[ "$EVENT_BASE" == "main" ]] || exit 1
+              [[ "$EVENT_HEAD" == "$EXPECTED_HEAD_SHA" ]] || exit 1
+              ;;
+            push)
+              [[ "$EVENT_REF" == "refs/heads/main" ]] || exit 1
+              [[ "$GITHUB_SHA" == "$EXPECTED_HEAD_SHA" ]] || exit 1
+              ;;
+            *) exit 1 ;;
+          esac
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.expected_head_sha || github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - name: Queryable library and archive checks
+        run: |
+          pnpm build
+          pnpm typecheck
+          pnpm test
+          pnpm test:tooling
+          pnpm migrate:verify
+      - name: Private authoring documentation checks
+        run: |
+          pnpm docs:publication:verify
+          pnpm docs:typecheck
+          pnpm docs:build
+          pnpm docs:test
+  verify:
+    name: verify
+    if: always()
+    needs: quality
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require complete quality result
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+        run: test "$QUALITY_RESULT" = success
