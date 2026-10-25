@@ -2,7 +2,7 @@
 
 공유 Symbol 메서드로 레코드를 조회하고, 순서가 있는 시퀀스와 선택적 지연 평가를 조합합니다.
 
-![Private beta](https://img.shields.io/badge/status-private_beta-555?style=flat)
+![Public npm target](https://img.shields.io/badge/status-public_npm_target-555?style=flat)
 
 [문서](./docs/index.ko.mdx) | [API](./docs/index.ko.mdx#연산) | [English](./README.md)
 
@@ -12,7 +12,7 @@
 
 ## 로컬 설정
 
-**비공개 베타 0.0.1 — npm에 배포하지 않았습니다.** 이 저장소 안에서 실행하며, 저장소 간 workspace 링크는 지원하지 않습니다. 로컬 문서 사이트는 `next` 채널만 다룹니다.
+**npm 공개 배포 대상, 버전 0.0.1.** 이 저장소 안에서 실행하며, 저장소 간 workspace 링크는 지원하지 않습니다. 로컬 문서 사이트는 `next` 채널만 다룹니다.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -64,7 +64,7 @@ pnpm docs:test
 pnpm bench
 ```
 
-발행은 비활성화되어 있습니다. 벤치마크는 정확성 판정이 아닌 측정이며, Remeda는 비교용 개발 의존성입니다.
+main 머지는 Changesets 릴리스 PR을 생성·갱신합니다. 해당 PR을 머지하면 성공한 Verify의 정확한 산출물만 배포하며, 로컬 배포는 금지합니다. 조직 공용 `NPM_TOKEN`에 이 저장소의 접근 권한을 설정하세요. 벤치마크는 정확성 판정이 아닌 측정이며, Remeda는 비교용 개발 의존성입니다.
 
 </details>
 

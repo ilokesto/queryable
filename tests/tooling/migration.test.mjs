@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { git } from '../../scripts/verify-migration.mjs';
+import { git, verifyRelease } from '../../scripts/verify-migration.mjs';
 
 const repository = path.resolve(import.meta.dirname, '../..');
 const manifest = JSON.parse(await readFile(path.join(repository, '.migration/source-manifest.json'), 'utf8'));
@@ -47,6 +47,55 @@ function rejects(t, root, code) {
   const result = verify(t, root);
   assert.equal(result.exitCode, 1);
   assert.equal(result.code, code);
+}
+
+for (const publishingStep of ['run: npm publish', 'run: pnpm publish', 'uses: changesets/action@v1']) {
+  for (const privateRoot of [false, true]) {
+    test(`standalone workflows: ${privateRoot ? 'private' : 'public'} root with ${publishingStep} -> ${privateRoot ? 'rejected' : 'accepted'}`, async t => {
+      const { root } = await fixture(t);
+      await put(root, 'package.json', { ...currentPackages[0][1], private: privateRoot });
+      await mkdir(path.join(root, '.github/workflows'), { recursive: true });
+      await writeFile(path.join(root, '.github/workflows/release.yml'), `jobs:\n  release:\n    steps:\n      - ${publishingStep}\n`);
+
+      const result = verify(t, root);
+
+      assert.equal(result.exitCode, privateRoot ? 1 : 0);
+      if (privateRoot) {
+        assert.equal(result.code, 'PRIVATE_PUBLISH_WORKFLOW');
+      }
+    });
+  }
+}
+
+for (const privatePackage of [false, true]) {
+  test(`verifyRelease: ${privatePackage ? 'private' : 'public'} queryable with verified release input -> ${privatePackage ? 'rejected' : 'eligible'}`, () => {
+    const sha = 'a'.repeat(40);
+    const artifactSha256 = 'b'.repeat(64);
+    const input = {
+      schemaVersion: 1,
+      requestedSha: sha,
+      currentMain: sha,
+      workflowSha: sha,
+      repository: 'ilokesto/queryable',
+      package: { name: '@ilokesto/queryable', version: '0.0.1', private: privatePackage },
+      verify: {
+        headSha: sha, repository: 'ilokesto/queryable', name: 'verify',
+        conclusion: 'success', runId: 1, artifactSha256,
+      },
+      packSha256: artifactSha256,
+      registry: { name: '@ilokesto/queryable', version: '0.0.1', published: false },
+    };
+
+    const release = () => verifyRelease(input);
+
+    if (privatePackage) {
+      assert.throws(release, { code: 'PRIVATE_RELEASE' });
+    } else {
+      assert.deepEqual(release(), {
+        mode: 'release', sha, status: 'eligible-unpublished', publishPerformed: false,
+      });
+    }
+  });
 }
 
 for (const staged of [false, true]) {

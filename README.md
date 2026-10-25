@@ -2,7 +2,7 @@
 
 Query records with shared Symbol methods, ordered sequences, and optional lazy evaluation.
 
-![Private beta](https://img.shields.io/badge/status-private_beta-555?style=flat)
+![Public npm target](https://img.shields.io/badge/status-public_npm_target-555?style=flat)
 
 [Docs](./docs/index.mdx) | [API](./docs/index.mdx#operations) | [한국어](./README.ko.md)
 
@@ -12,7 +12,7 @@ Query records with shared Symbol methods, ordered sequences, and optional lazy e
 
 ## Local setup
 
-**Private beta 0.0.1 — not published to npm.** Run inside this repository; cross-repository workspace links are unsupported. The local documentation site covers `next` only.
+**Public npm release target, version 0.0.1.** Run inside this repository; cross-repository workspace links are unsupported. The local documentation site covers `next` only.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -64,7 +64,7 @@ pnpm docs:test
 pnpm bench
 ```
 
-Publishing remains disabled. Benchmarks are measurements, not correctness gates; Remeda is a development-only comparison dependency.
+Main merges maintain a Changesets release PR. Merging that PR publishes only the exact successful Verify artifact; local publishing is forbidden. Configure the shared organization `NPM_TOKEN` with access to this repository. Benchmarks are measurements, not correctness gates; Remeda is a development-only comparison dependency.
 
 </details>
 
