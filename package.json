@@ -17,6 +17,9 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
+    "changeset": "changeset",
+    "changeset:status": "changeset status",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json",
     "test": "vitest run src",
     "test:tooling": "node --test tests/tooling/*.test.mjs",
@@ -37,6 +40,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@changesets/cli": "2.31.1",
     "@types/node": "26.2.0",
     "remeda": "2.51.0",
     "typescript": "6.0.3",
