@@ -50,11 +50,12 @@ function eventEnv(overrides = {}) {
     GITHUB_REPOSITORY: 'ilokesto/queryable',
     GITHUB_SHA: sha,
     EVENT_NAME: 'pull_request',
-    EVENT_REF: 'refs/pull/42/merge',
+    GITHUB_REF: 'refs/pull/42/merge',
     EVENT_HEAD: sha,
     EVENT_BASE: 'main',
     EXPECTED_HEAD_SHA: sha,
     GH_TOKEN: 'fixture-token',
+    RELEASE_PR_NUMBER: '',
     ...overrides,
   };
 }
@@ -73,7 +74,7 @@ test('CI contract: manual main exact head and live ref -> accepted read-only', a
     await chmod(gh, 0o755);
     const result = await executeGuard(script, eventEnv({
       EVENT_NAME: 'workflow_dispatch',
-      EVENT_REF: 'refs/heads/main',
+      GITHUB_REF: 'refs/heads/main',
       EVENT_HEAD: sha,
       GITHUB_SHA: sha,
       EXPECTED_HEAD_SHA: sha,
@@ -93,7 +94,7 @@ test('CI contract: wrong manual workflow SHA -> rejected before live-main lookup
   const { script } = await readGuard();
   const result = await executeGuard(script, eventEnv({
     EVENT_NAME: 'workflow_dispatch',
-    EVENT_REF: 'refs/heads/main',
+    GITHUB_REF: 'refs/heads/main',
     GITHUB_SHA: sha,
     EXPECTED_HEAD_SHA: movedSha,
   }));
@@ -110,7 +111,7 @@ test('CI contract: moved live main -> rejected for manual run', async () => {
     await chmod(gh, 0o755);
     const result = await executeGuard(script, eventEnv({
       EVENT_NAME: 'workflow_dispatch',
-      EVENT_REF: 'refs/heads/main',
+      GITHUB_REF: 'refs/heads/main',
       EVENT_HEAD: sha,
       GITHUB_SHA: sha,
       EXPECTED_HEAD_SHA: sha,
@@ -135,7 +136,7 @@ test('CI contract: malformed manual expected head -> rejected', async () => {
   const { script } = await readGuard();
   const result = await executeGuard(script, eventEnv({
     EVENT_NAME: 'workflow_dispatch',
-    EVENT_REF: 'refs/heads/main',
+    GITHUB_REF: 'refs/heads/main',
     EXPECTED_HEAD_SHA: 'main',
   }));
 

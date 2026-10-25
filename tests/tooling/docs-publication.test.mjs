@@ -8,23 +8,24 @@ import { verifyAuthoring } from '../../scripts/docs-publication.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
-test('docs publication verifier: private canonical content -> authoring-only result', async () => {
+test('docs publication verifier: public package with local canonical docs -> authoring-only result', async () => {
   const result = await verifyAuthoring(root);
 
   assert.equal(result.status, 'pass');
   assert.equal(result.mode, 'private-authoring-only');
-  assert.equal(result.private, true);
+  assert.equal(result.private, false);
   assert.deepEqual(result.locales, ['en', 'ko']);
   assert.equal(result.publicCollections, 0);
   assert.equal(result.releasedCollections, 0);
   assert.equal(result.releaseReceipts, 0);
   assert.equal(result.runtimeAliases, 0);
   assert.equal(result.publisherWorkflows, 0);
+  assert.deepEqual(result.packageReleaseWorkflows, ['publish.yml', 'release.yml']);
 });
 
-test('docs publication verifier: private false fixture -> rejected before authoring acceptance', async () => {
-  const fixture = await mkdtemp(path.join(os.tmpdir(), 'queryable-docs-private-'));
-  try {
+async function authoringFixture(t) {
+  const fixture = await mkdtemp(path.join(os.tmpdir(), 'queryable-docs-authoring-'));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
     const packageManifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
     packageManifest.private = false;
     await writeFile(path.join(fixture, 'package.json'), JSON.stringify(packageManifest));
@@ -53,11 +54,42 @@ test('docs publication verifier: private false fixture -> rejected before author
     await writeFile(path.join(fixture, 'docs/index.ko.mdx'), '# Queryable');
     await writeFile(path.join(fixture, '.github/workflows/ci.yml'), 'name: Verify\n');
 
-    await assert.rejects(
-      verifyAuthoring(fixture),
-      error => error.code === 'PRIVATE_PACKAGE_REQUIRED',
-    );
-  } finally {
-    await rm(fixture, { recursive: true, force: true });
-  }
+  return fixture;
+}
+
+test('docs publication verifier: public npm package -> local authoring accepted', async t => {
+  const fixture = await authoringFixture(t);
+
+  const result = await verifyAuthoring(fixture);
+
+  assert.equal(result.status, 'pass');
+  assert.equal(result.private, false);
+  assert.equal(result.publicCollections, 0);
+});
+
+test('docs publication verifier: public website workspace -> rejected', async t => {
+  const fixture = await authoringFixture(t);
+  await writeFile(path.join(fixture, 'website/package.json'), JSON.stringify({
+    private: false, dependencies: {},
+  }));
+
+  await assert.rejects(verifyAuthoring(fixture), error => error.code === 'PRIVATE_WEBSITE_REQUIRED');
+});
+
+test('docs publication verifier: npm release workflows -> no documentation publication', async t => {
+  const fixture = await authoringFixture(t);
+  await writeFile(path.join(fixture, '.github/workflows/release.yml'), 'name: Release\n');
+  await writeFile(path.join(fixture, '.github/workflows/publish.yml'), 'name: Publish\n');
+
+  const result = await verifyAuthoring(fixture);
+
+  assert.deepEqual(result.packageReleaseWorkflows, ['publish.yml', 'release.yml']);
+  assert.equal(result.publisherWorkflows, 0);
+});
+
+test('docs publication verifier: Pages deployment -> rejected', async t => {
+  const fixture = await authoringFixture(t);
+  await writeFile(path.join(fixture, '.github/workflows/docs.yml'), 'steps:\n  - uses: actions/deploy-pages@v4\n');
+
+  await assert.rejects(verifyAuthoring(fixture), error => error.code === 'DOCS_DEPLOY_WORKFLOW');
 });

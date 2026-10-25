@@ -327,9 +327,6 @@ export async function verifyStandalone(repo, manifest) {
   invariant(withinRepo(await realpath(path.join(repo, 'package.json'))), 'EXTERNAL_REPOSITORY_PATH', 'package.json');
   const root = JSON.parse(await readFile(path.join(repo, 'package.json'), 'utf8'));
   invariant(root.name === `@ilokesto/${manifest.package}`, 'PACKAGE_IDENTITY', root.name);
-  if (manifest.package === 'queryable') {
-    invariant(root.private === true, 'PRIVATE_PACKAGE_EXPOSED', root.name);
-  }
   const files = (await git(repo, ['ls-files', '--cached', '--others', '--exclude-standard', '-z'])).toString().split('\0').filter(Boolean);
   const generated = new Set(['node_modules', 'dist', '.next', '.source', '.generated']);
   const manifests = new Map();
@@ -395,7 +392,7 @@ export async function verifyStandalone(repo, manifest) {
       }
     }
   }
-  if (manifest.package === 'queryable') {
+  if (root.private === true) {
     const workflows = files.filter(file => /^\.github\/workflows\/.*\.ya?ml$/.test(file));
     for (const file of workflows) {
       invariant(!/\b(?:npm|pnpm)\s+publish\b|changesets\/action/.test(await readFile(path.join(repo, file), 'utf8')), 'PRIVATE_PUBLISH_WORKFLOW', file);
@@ -406,7 +403,7 @@ export async function verifyStandalone(repo, manifest) {
 
 export function verifyRelease(input) {
   invariant(input?.schemaVersion === 1 && HEX.test(input.requestedSha), 'RELEASE_INPUT', 'requested SHA');
-  invariant(input.package?.private !== true && input.package?.name !== '@ilokesto/queryable', 'PRIVATE_RELEASE', input.package?.name);
+  invariant(input.package?.private !== true, 'PRIVATE_RELEASE', input.package?.name);
   invariant(input.requestedSha === input.currentMain && input.requestedSha === input.workflowSha, 'RELEASE_SHA_CHANGED', input.requestedSha);
   invariant(input.verify?.headSha === input.requestedSha && input.verify.repository === input.repository && input.verify.name === 'verify' && input.verify.conclusion === 'success' && Number.isSafeInteger(input.verify.runId), 'UNVERIFIED_RELEASE_SHA', input.requestedSha);
   invariant(SHA256.test(input.packSha256) && input.packSha256 === input.verify.artifactSha256, 'RELEASE_ARTIFACT_CHANGED', input.packSha256);

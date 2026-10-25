@@ -35,7 +35,7 @@ export async function verifyAuthoring(rootPath = root) {
     : [];
 
     invariant(packageManifest.name === "@ilokesto/queryable", "PACKAGE_IDENTITY");
-    invariant(packageManifest.private === true, "PRIVATE_PACKAGE_REQUIRED");
+    invariant(packageManifest.private === false && packageManifest.publishConfig?.access === "public", "PUBLIC_PACKAGE_REQUIRED");
     invariant(websiteManifest.private === true, "PRIVATE_WEBSITE_REQUIRED");
     invariant(mode.mode === "private-authoring-only", "DOCS_MODE");
     invariant(mode.package === "queryable" && mode.channel === "next", "DOCS_COLLECTION");
@@ -60,17 +60,16 @@ export async function verifyAuthoring(rootPath = root) {
     })));
     for (const workflow of workflows) {
       invariant(
-        !/\b(?:npm|pnpm)\s+publish\b|changesets\/action|\bpublish:\s/.test(workflow.text),
-        "PUBLISH_WORKFLOW",
+        !/actions\/deploy-pages@|peaceiris\/actions-gh-pages@|\b(?:vercel|netlify)\s+(?:deploy|--prod)/.test(workflow.text),
+        "DOCS_DEPLOY_WORKFLOW",
       );
     }
-    invariant(!workflowNames.some(name => /^(?:publish|release)\.ya?ml$/.test(name)), "PUBLISH_WORKFLOW");
 
     return {
       status: "pass",
       mode: mode.mode,
       package: packageManifest.name,
-      private: true,
+      private: false,
       locales: mode.locales,
       channel: mode.channel,
       canonicalMdxPages: docs.filter(name => /\.mdx$/.test(name)).length,
@@ -79,6 +78,7 @@ export async function verifyAuthoring(rootPath = root) {
       releaseReceipts: 0,
       runtimeAliases: 0,
       publisherWorkflows: 0,
+      packageReleaseWorkflows: workflowNames.filter(name => /^(?:publish|release)\.ya?ml$/.test(name)).sort(),
       verificationWorkflows: workflowNames.filter(name => name === "ci.yml"),
     };
 }
