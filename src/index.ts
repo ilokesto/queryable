@@ -1,3 +1,11 @@
+import {
+  MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K,
+  extremum, nthValue, rankKey, sortByEntries, topEntries, validatePosition,
+} from "./ordering.js";
+import type { OrderRules } from "./ordering.js";
+export { MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K } from "./ordering.js";
+export type { OrderKey, OrderRule, OrderRules } from "./ordering.js";
+
 import { EACH, PARTITION, SCAN, TAP, THROUGH, eachEntry, partitionEntries, scanEntries, tapEntries, through } from "./stateful.js";
 import type { Stateful } from "./stateful.js";
 
@@ -118,6 +126,13 @@ interface Source<T> {
 }
 
 interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
+  /** Return the first minimum/maximum; empty input returns undefined. */
+  [MIN_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  [MAX_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  /** Select a zero-based position; negative positions count from the end. */
+  [NTH_BY](this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined;
+  /** Read the zero-based stable ordinal of an existing record key. */
+  [RANK_BY](this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined;
   [TO_MAP](this: Source<T>): Map<string, T>;
   [TO_SET](this: Source<T>): Set<T>;
   [KEYS](this: Source<T>): string[];
@@ -176,6 +191,10 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
+  /** Cache selector keys once per entry per consumption and sort lexicographically. */
+  [SORT_BY](this: Result<T, M>, ...rules: OrderRules<T>): QuerySequence<T>;
+  /** Keep at most K winners, then return them in stable sorted order. */
+  [TOP_K](this: Result<T, M>, k: number, ...rules: OrderRules<T>): QuerySequence<T>;
   /** Keep the first entry for each value, using SameValueZero/reference identity. */
   [DISTINCT](this: Result<T, M>): Result<T, M>;
   /** Keep the first entry for each selected value; selectors receive original keys. */
@@ -367,6 +386,19 @@ function lookupEntry<T>(this: Source<T>, predicate: (value: T, key: string) => b
 }
 
 const terminals = {
+  [MIN_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, false);
+  },
+  [MAX_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, true);
+  },
+  [NTH_BY]<T>(this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined {
+    validatePosition(index, true);
+    return nthValue(this[ITERATE](), index, rules);
+  },
+  [RANK_BY]<T>(this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined {
+    return rankKey(this[ITERATE](), key, rules);
+  },
   [EACH]<T>(this: Source<T>, effect: (value: T, key: string) => void): void {
     eachEntry(this[ITERATE](), effect);
   },
@@ -508,6 +540,13 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [SORT_BY]<T>(this: Queryable<T>, ...rules: OrderRules<T>): QuerySequence<T> {
+    return new Sequence(sortByEntries(recordEntries(this), rules), false);
+  },
+  [TOP_K]<T>(this: Queryable<T>, k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return new Sequence(topEntries(recordEntries(this), k, rules), false);
+  },
   [DISTINCT]<T>(this: Queryable<T>): Queryable<T> {
     return fromEntries(distinctEntries(recordEntries(this), identity));
   },
@@ -602,6 +641,14 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [SORT_BY](...rules: OrderRules<T>): QuerySequence<T> {
+    return this.next(defer(sortByEntries, this.source, rules));
+  }
+  [TOP_K](k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return this.next(defer(topEntries, this.source, k, rules));
   }
 
   [DISTINCT](): QuerySequence<T> {
