@@ -144,3 +144,34 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 중복 키를 조용히 덮어쓰지 않고 거부합니다. PICK·그룹·정렬·컬렉션 출력도
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
+
+## 네이티브 컬렉션 출력과 Map 키 그룹
+
+`KEYS()`는 쿼리 순서의 새로운 문자열 배열을, `TO_MAP()`은 원래 키와 얕은 값을
+가진 새로운 `Map<string, T>`를 반환합니다. 저장된 `undefined`도 보존합니다.
+`TO_SET()`은 첫 출현 순서와 네이티브 SameValueZero 동등성을 사용합니다.
+`NaN`끼리, `-0`과 `0`은 같고 객체는 참조가 같아야 합니다. 모두 terminal이므로
+지연 작업은 호출마다 다시 실행됩니다. 반환 컬렉션을 수정해도 원본은 바뀌지 않습니다.
+
+`GROUP_BY_MAP((value, originalKey) => groupKey)`는 객체·Symbol·숫자·`undefined`
+등 임의의 Map 키를 받습니다. entry마다 selector를 한 번 호출하며 지연 입력도
+즉시 소비하여 독립 그룹을 만듭니다. Map의 그룹 순서는 각 키의 첫 출현 순서이고
+그룹 멤버는 원래 키와 입력 순서를 유지합니다. 레코드 그룹은 네이티브 객체 순서,
+정렬·지연 그룹은 시퀀스 순서를 따릅니다. 값은 계속 얕은 참조입니다.
+
+```ts
+import { createQueryable, GROUP_BY_MAP, KEYS, TO_MAP, TO_SET } from "@ilokesto/queryable";
+
+const team = {};
+const users = createQueryable({ alice: { team }, bob: { team } });
+const groups = users[GROUP_BY_MAP](user => user.team);
+groups.get(team)?.[KEYS](); // ["alice", "bob"]
+users[TO_MAP]().get("alice"); // { team }
+users[TO_SET]().size; // 2: 서로 다른 사용자 객체
+```
+
+그룹 키를 문자열이나 레코드 키로 바꾸지 않습니다. 반환 Map은 쿼리가 아니며
+JSON·객체로 자동 변환하지 않으므로 직렬화 표현을 직접 선택해야 합니다.
+기존 문자열 키 `GROUP_BY`는 유지합니다. 빈 입력은 새로운 빈 컬렉션을 반환하고,
+factory 원본의 중복 키 정책은 연산 전에 적용되므로 기본 `TO_MAP`은 중복을
+조용히 덮어쓰는 대신 오류를 냅니다.

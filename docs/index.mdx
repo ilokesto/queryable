@@ -148,3 +148,37 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 `PICK`, grouping, sorting, and collection outputs receive the same unique-key
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
+
+## Native collection outputs and Map-key groups
+
+`KEYS()` returns a fresh string array in query order. `TO_MAP()` returns a fresh
+`Map<string, T>` of original keys and shallow values, including stored
+`undefined`. `TO_SET()` collects values in first-occurrence order using native
+SameValueZero equality: `NaN` matches itself, `-0` matches `0`, and objects use
+reference identity. These terminals consume the query; lazy work runs again
+on every call. Changing a returned collection does not modify the source.
+
+`GROUP_BY_MAP((value, originalKey) => groupKey)` accepts arbitrary group keys:
+objects, Symbols, numbers, `undefined`, and other native Map keys. It calls the
+selector once per entry and eagerly materializes independent groups even on
+lazy input. Map iteration follows the first occurrence of each group key.
+Members retain original keys and input order (native object order for record
+groups, sequence order for ordered/lazy groups). Values remain shallow references.
+
+```ts
+import { createQueryable, GROUP_BY_MAP, KEYS, TO_MAP, TO_SET } from "@ilokesto/queryable";
+
+const team = {};
+const users = createQueryable({ alice: { team }, bob: { team } });
+const groups = users[GROUP_BY_MAP](user => user.team);
+groups.get(team)?.[KEYS](); // ["alice", "bob"]
+users[TO_MAP]().get("alice"); // { team }
+users[TO_SET]().size; // 2: distinct user objects
+```
+
+Group keys are never stringified or exposed as record keys. The returned Map
+is not a query and has no implicit JSON/object conversion; explicitly choose a
+serialization representation. Existing string-keyed `GROUP_BY` remains unchanged.
+Empty inputs return fresh empty collections. Factory-source duplicate policies
+still apply before these operations, so default duplicate keys throw rather
+than silently overwrite values in `TO_MAP`.
