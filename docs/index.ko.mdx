@@ -101,6 +101,41 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 
 [벤치마크 방법](../bench/README.md) · [실측 결과](../bench/RESULTS.md) · [저장소 안내](../README.ko.md)
 
+## Predicate narrowing과 속성별 그룹
+
+`WHERE(Boolean)`과 `FIND(Boolean)`은 값 타입에서 리터럴 `false`, `0`, `0n`, `""`, `null`, `undefined`를 제거합니다. 넓은 `number`, `bigint`, `string`은 그대로 유지합니다. TypeScript는 0·NaN이 아닌 모든 수나 비어 있지 않은 문자열을 완전히 표현하지 못합니다. 리터럴 `false`를 반환하는 콜백의 `WHERE` 결과는 빈 `Queryable<never>` 또는 `QuerySequence<never>`이며, `FIND`는 `undefined`를 반환합니다. 명시적·추론된 타입 가드의 narrowing과 일반 boolean 콜백의 원래 값 타입은 유지합니다. 즉시 평가 레코드·정렬 시퀀스·지연 시퀀스 모두 같은 타입 계약을 사용하며 실행 순서는 바뀌지 않습니다.
+
+```ts
+import { createQueryable, WHERE, FIND, VALUES, isDefined, isNonNullish, negate } from "@ilokesto/queryable";
+
+const mixed = createQueryable<0 | false | "" | "cat" | null | undefined>({
+  zero: 0, no: false, empty: "", cat: "cat", nil: null, missing: undefined,
+});
+mixed[WHERE](Boolean)[VALUES](); // ["cat"]; Queryable<"cat">
+mixed[WHERE](isDefined)[VALUES](); // [0, false, "", "cat", null]
+mixed[WHERE](isNonNullish)[VALUES](); // [0, false, "", "cat"]
+mixed[WHERE](negate(isNonNullish))[VALUES](); // [null, undefined]
+mixed[FIND](() => false); // undefined
+```
+
+`isDefined`는 `undefined`만, `isNonNullish`는 `null`과 `undefined`를 제외합니다. `negate(predicate)`는 모든 콜백 인자를 그대로 전달하고 결과를 반전합니다. 제공된 브랜드가 있는 `isDefined`·`isNonNullish`만 여집합 narrowing을 지원합니다. 임의 타입 가드를 부정하면 boolean predicate를 반환합니다. 양수만 고르는 number 가드는 음수도 거절하므로 부정 결과에서 모든 number를 제외하면 안전하지 않습니다. 헬퍼를 일반 콜백으로 감싸면 브랜드 기반 여집합 계약은 유지되지 않습니다.
+
+`GROUP_BY_PROP(property)`는 문자열 판별 속성의 그룹 키와 해당 값을 가질 수 있는 union member를 연결합니다. 콜백 기반 `GROUP_BY`와 달리 그룹마다 값 타입을 좁히며, 필수 판별 속성이나 빈 입력도 그룹 존재는 optional입니다.
+
+```ts
+import { createQueryable, GROUP_BY_PROP, VALUES } from "@ilokesto/queryable";
+
+type Pet = { readonly kind: "cat"; meow: true } | { readonly kind: "dog"; bark: true };
+const pets = createQueryable<Pet>({ alice: { kind: "cat", meow: true } });
+const groups = pets[GROUP_BY_PROP]("kind");
+groups.cat?.[VALUES](); // cat member만 포함, 원래 키 "alice" 유지
+groups.dog; // 여기서는 undefined; Queryable<dog member> | undefined
+```
+
+선택적 문자열 판별 속성과 속성 자체가 없는 union member도 지원합니다. 속성이 없거나 값이 `undefined`이면 그룹 이름으로 변환하지 않고 건너뜁니다. 그룹 값 타입은 원래의 optional·readonly 속성을 보수적으로 유지하며, 선택적 속성을 필수로 바꾸지 않습니다. 숫자 또는 문자열·숫자 혼합 판별 속성은 받지 않으며 암묵적 숫자 키 변환은 보장하지 않습니다. 런타임에서도 문자열 속성 값만 그룹을 만듭니다.
+
+`GROUP_BY`처럼 `GROUP_BY_PROP`는 미뤄 둔 지연 작업까지 호출 즉시 소비해 얕은 즉시 평가 스냅샷을 만듭니다. 순회 순서대로 각 멤버의 판별 속성을 한 번 읽고 원래 멤버 키와 레코드·시퀀스 모드를 유지합니다. 빈 문자열과 특수 문자열 키를 지원하며 그룹을 다시 소비해도 그룹화 작업을 반복하지 않습니다. 속성 getter 예외는 그대로 전파하고 중첩 값은 참조를 공유합니다.
+
 ## selector 정렬과 명시적 선택
 
 ```ts

@@ -1,3 +1,7 @@
+import type { Truthy } from "./predicates.js";
+export { isDefined, isNonNullish, negate } from "./predicates.js";
+export type { Truthy } from "./predicates.js";
+
 import {
   MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K,
   extremum, nthValue, rankKey, sortByEntries, topEntries, validatePosition,
@@ -79,6 +83,10 @@ export const LIMIT = Symbol("limit");
  * @example query[GROUP_BY](value => value.active ? "active" : "inactive")
  */
 export const GROUP_BY = Symbol("group_by");
+/** Group by a string discriminant, narrowing each group's union members.
+ * @example query[GROUP_BY_PROP]("kind").cat?.[VALUES]()
+ */
+export const GROUP_BY_PROP = Symbol("group_by_prop");
 /** Count records.
  * @example query[COUNT]()
  */
@@ -120,6 +128,18 @@ const ITERATE = Symbol("iterate");
 type Entry<T> = readonly [string, T];
 type Mode = "record" | "sequence";
 type Result<T, M extends Mode> = M extends "record" ? Queryable<T> : QuerySequence<T>;
+type PropertyKeys<T> = T extends unknown ? keyof T : never;
+type PropertyValue<T, P extends PropertyKey> = T extends unknown ? P extends keyof T ? T[P] : never : never;
+type StringProperty<T> = {
+  [P in PropertyKeys<T> & string]: Exclude<PropertyValue<T, P>, string | undefined> extends never
+    ? Extract<PropertyValue<T, P>, string> extends never ? never : P
+    : never;
+}[PropertyKeys<T> & string];
+type PropertyMember<T, P extends PropertyKey, K extends string> =
+  T extends unknown ? P extends keyof T ? [T[P] & K] extends [never] ? never : T : never : never;
+type PropertyGroups<T, P extends PropertyKey, M extends Mode> = {
+  [K in Extract<PropertyValue<T, P>, string>]?: Result<PropertyMember<T, P, K>, M>;
+};
 
 interface Source<T> {
   [ITERATE](): Iterable<Entry<T>>;
@@ -170,6 +190,8 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   /** Find a matching value and preserve type guard narrowing.
    * @example query[FIND]((value): value is string => typeof value === "string")
    */
+  [FIND](this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
+  [FIND](this: Source<T>, predicate: (value: T, key: string) => false): undefined;
   [FIND]<S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
   [FIND](this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
   /** Return true on the first match, or false for an empty query.
@@ -207,6 +229,8 @@ interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
+  [WHERE](this: Result<T, M>, predicate: BooleanConstructor): Result<Truthy<T>, M>;
+  [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => false): Result<never, M>;
   [WHERE]<S extends T>(this: Result<T, M>, predicate: (value: T, key: string) => value is S): Result<S, M>;
   [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => boolean): Result<T, M>;
   /** Stable sort into a sequence. Lazy sequences defer sorting until consumption.
@@ -250,6 +274,11 @@ interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
    * @example query[GROUP_BY](value => value.active ? "yes" : "no")
    */
   [GROUP_BY]<K extends string>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Partial<Record<K, Result<T, M>>>;
+  /** Eagerly group string property values; missing/undefined discriminants are skipped.
+   * Optional members remain optional in their original value type.
+   * @example query[GROUP_BY_PROP]("kind").cat?.[VALUES]()
+   */
+  [GROUP_BY_PROP]<P extends StringProperty<T>>(this: Result<T, M>, property: P): PropertyGroups<T, P, M>;
   /** Make a lazy view. Each consumption re-runs pending callbacks; no caching.
    * @example query[LAZY]()[MAP](value => value.name)[FIRST]()
    */
@@ -362,6 +391,18 @@ function fromEntries<T>(entries: Iterable<Entry<T>>): Queryable<T> {
   return result;
 }
 
+function propertyGroupKey<T>(value: T, property: string): string | undefined {
+  if ((typeof value === "object" && value !== null || typeof value === "function") && property in value) {
+    const groupKey: unknown = Reflect.get(value, property);
+    if (typeof groupKey === "string") {
+      return groupKey;
+    }
+  }
+  return undefined;
+}
+
+function find<T>(this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
+function find<T>(this: Source<T>, predicate: (value: T, key: string) => false): undefined;
 function find<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined {
@@ -513,6 +554,8 @@ const terminals = {
   },
 };
 
+function where<T>(this: Queryable<T>, predicate: BooleanConstructor): Queryable<Truthy<T>>;
+function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => false): Queryable<never>;
 function where<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T> {
@@ -625,6 +668,18 @@ const queryablePrototype = {
     }
     return groups;
   },
+  [GROUP_BY_PROP]<T, P extends StringProperty<T>>(this: Queryable<T>, property: P): PropertyGroups<T, P, "record"> {
+    const groups: Partial<Record<string, Queryable<T>>> = Object.create(null);
+    for (const [key, value] of recordEntries(this)) {
+      const groupKey = propertyGroupKey(value, property);
+      if (groupKey !== undefined) {
+        const group = groups[groupKey] ?? (groups[groupKey] = createQueryable<T>({}));
+        group[key] = value;
+      }
+    }
+    // Each string key was read from this member's discriminant, once.
+    return groups as PropertyGroups<T, P, "record">;
+  },
   [LAZY]<T>(this: Queryable<T>): QuerySequence<T> {
     return new Sequence(defer(recordEntries, this), true);
   },
@@ -682,9 +737,11 @@ class Sequence<T> implements QuerySequence<T> {
     return groups;
   }
 
+  [WHERE](predicate: BooleanConstructor): QuerySequence<Truthy<T>>;
+  [WHERE](predicate: (value: T, key: string) => false): QuerySequence<never>;
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
   [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T>;
-  [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T> {
+  [WHERE](predicate: (value: T, key: string) => boolean): Source<T> {
     return this.next(defer(filterEntries, this.source, predicate));
   }
   [MAP]<U>(fn: (value: T, key: string) => U): QuerySequence<U> {
@@ -745,6 +802,23 @@ class Sequence<T> implements QuerySequence<T> {
       }
     }
     return groups;
+  }
+  [GROUP_BY_PROP]<P extends StringProperty<T>>(property: P): PropertyGroups<T, P, "sequence"> {
+    const entries: Partial<Record<string, Entry<T>[]>> = Object.create(null);
+    for (const entry of this.source) {
+      const groupKey = propertyGroupKey(entry[1], property);
+      if (groupKey !== undefined) {
+        (entries[groupKey] ??= []).push(entry);
+      }
+    }
+    const groups: Partial<Record<string, QuerySequence<T>>> = Object.create(null);
+    for (const key in entries) {
+      const group = entries[key];
+      if (group) {
+        groups[key] = new Sequence(group, false);
+      }
+    }
+    return groups as PropertyGroups<T, P, "sequence">;
   }
   [LAZY](): QuerySequence<T> {
     return new Sequence(this.source, true);
