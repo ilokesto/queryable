@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { LAZY, MAP, SORT, VALUES, createQueryable } from '@ilokesto/queryable';
-import { found, groups, mapped, narrowed, total, values } from './dist/consumer.js';
+import { found, groups, mapped, narrowed, recoveredQuery, retriedQuery, total, values } from './dist/consumer.js';
 
 assert.deepEqual(values, ['one']);
 assert.deepEqual(narrowed[VALUES](), ['one']);
@@ -12,3 +12,5 @@ const query = createQueryable({ 1: 10, 2: 20 });
 assert.deepEqual(query[SORT]((a, b) => b - a)[VALUES](), [20, 10]);
 assert.equal(query[MAP], createQueryable({ a: 1 })[MAP]);
 assert.equal(query[LAZY]()[MAP], mapped[MAP]);
+assert.deepEqual(await recoveredQuery[VALUES](), ['recovered']);
+assert.deepEqual(await retriedQuery[VALUES](), [7]);

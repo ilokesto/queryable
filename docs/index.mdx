@@ -476,3 +476,80 @@ after early return or failure. For example, a hook after `LIMIT(1)` sees that
 limited stage complete; a hook before it sees early return. No hook or source
 runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
 shared and frozen, with fresh execution state on each consumption.
+
+## Explicit async fallback and buffered retry
+
+`query[FALLBACK]((error, signal) => fallbackEntries, { duplicateKeys })` switches
+once when its upstream factory, pull, awaited value, or callback fails. The
+factory receives the exact failure and inherited signal; it may return a sync
+or async entry source, directly or through a PromiseLike. Values are awaited.
+It does not run for normal completion, an empty source, early return, downstream
+callback/terminal failure, or a consumer body error. Fallback acquisition, pull,
+value, and cleanup failures propagate without another switch. Abort never
+selects a fallback and rejects with the signal's exact reason.
+
+```ts
+import {
+  createAsyncQuerySequence, createRetryAsyncQuerySequence, FALLBACK, VALUES,
+} from "@ilokesto/queryable";
+
+const recovered = createAsyncQuerySequence<number>(function* () {
+  yield ["a", 1];
+  throw new Error("source unavailable");
+})[FALLBACK](() => [["b", 2]]);
+await recovered[VALUES](); // [1, 2]
+
+let attempts = 0;
+const retried = createRetryAsyncQuerySequence<number>(function* () {
+  const attempt = ++attempts;
+  yield ["a", attempt];
+  if (attempt === 1) { throw new Error("try a fresh source"); }
+}, 1);
+await retried[VALUES](); // [2], never [1, 2]
+```
+
+Fallback retains the prefix already emitted before failure, then appends the
+replacement source. An empty replacement completes with that prefix; it does
+not erase output. One common key boundary covers both parts: default `"error"`
+throws `DuplicateKeyError`, `"first"` skips later collisions, and `"last"`
+buffers the entire combined stream and keeps the last value at each key's
+first position. This boundary policy is explicit and independent of the
+original source policy. With `"error"`/`"first"` a view may expose a prefix
+before a later failure; a rejected collecting terminal returns no partial array.
+With `"last"` no output appears before the combined stream completes.
+
+`createRetryAsyncQuerySequence(factory, retries, options)` is a separate
+fresh-entry-factory API, not a retry of a captured query cursor. `retries` must
+be a nonnegative safe integer and counts **additional** attempts: `0` means one
+attempt. It restarts from the beginning after factory, pull, awaited-value, or
+entry-validation failure, up to that bound; exhaustion throws the final attempt's
+exact failure. The options are the same `signal` and `duplicateKeys` policies as
+`createAsyncQuerySequence`. Empty success stops retries. Abort stops immediately,
+starts no later attempt, and preserves its exact reason; there is no delay,
+backoff, unlimited retry, or default recovery in existing operators.
+
+Each retry attempt buffers **O(N)** entries and exposes only a fully successful
+attempt, even to `FIRST()` or `LIMIT(1)`. Failed attempts' partial output is
+discarded, so it is not delivered twice and cannot collide with a later attempt.
+Infinite sources cannot produce a retry result. The factory must acquire a fresh
+cursor on every attempt and consumption. Reusing an iterator within one
+consumption stops retry with the preceding failure rather than calling `next()`
+on a closed generator and mistaking it for empty success.
+
+Only work inside the retry factory/source is retried. To retry a mapped query,
+build a fresh query inside that factory and return `iterateAsyncEntries(query)`;
+operators chained after `createRetryAsyncQuerySequence` run once over the
+successful buffer, and their failures are not retried. Source/callback side
+effects from failed attempts are **not rolled back** and may run again. Neither
+API promises transactional effects, exactly-once work, item skipping, or cursor
+resumption.
+
+Each consumption has independent fallback/attempt/duplicate state and calls its
+factories again; no result is memoized. Failure cleanup is awaited before
+fallback acquisition or the next retry, with the existing primary error winning
+over cleanup errors. Abort attempts closure without waiting for non-cooperative
+work. Nested `FINALIZE` hooks inside an attempt see that attempt's error/return;
+a hook outside successful recovery sees completion, and `ON_COMPLETE` runs only
+when its own upstream exhausts normally. Consumer break closes the active
+fallback; buffered retry has already exhausted and closed its source before
+exposing an entry.

@@ -2,6 +2,8 @@ import { DuplicateKeyError } from "./entries.js";
 import type { KeyCollisionPolicy } from "./entries.js";
 import { FINALIZE, ON_COMPLETE, completeEntries, finalizeEntries, waitFor } from "./lifetime.js";
 import type { ConsumptionOutcome } from "./lifetime.js";
+import { FALLBACK, fallbackEntries } from "./recovery.js";
+import type { AsyncFallbackFactory } from "./recovery.js";
 import { COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, SOME, SORT, VALUES, WHERE } from "./index.js";
 
 type Entry<T> = readonly [string, T];
@@ -44,6 +46,12 @@ export interface AsyncQuerySequence<T> {
     finalize: (outcome: ConsumptionOutcome, signal: AbortSignal | undefined) => Awaitable<void>,
   ): AsyncQuerySequence<T>;
   [ON_COMPLETE](this: AsyncQuerySequence<T>, complete: (signal: AbortSignal | undefined) => Awaitable<void>): AsyncQuerySequence<T>;
+  /** Preserve the emitted prefix, then switch once; collisions use error/first/last. */
+  [FALLBACK]<U>(
+    this: AsyncQuerySequence<T>,
+    fallback: AsyncFallbackFactory<U>,
+    options?: Pick<AsyncQuerySequenceOptions, "duplicateKeys">,
+  ): AsyncQuerySequence<T | Awaited<U>>;
   [GROUP_BY]<K extends string>(
     this: AsyncQuerySequence<T>,
     keyFn: (value: T, key: string, signal: AbortSignal | undefined) => Awaitable<K>,
@@ -65,7 +73,7 @@ function defer<T, A extends unknown[]>(generate: (...args: A) => AsyncIterable<T
   return new Deferred(generate, args);
 }
 
-async function* normalizedEntries<T>(factory: AsyncEntrySourceFactory<T>, signal?: AbortSignal): AsyncGenerator<Entry<Awaited<T>>> {
+export async function* normalizedEntries<T>(factory: AsyncEntrySourceFactory<T>, signal?: AbortSignal): AsyncGenerator<Entry<Awaited<T>>> {
   const source = await waitFor(() => factory(signal), signal);
   const iterator = Symbol.asyncIterator in source ? source[Symbol.asyncIterator]() : source[Symbol.iterator]();
   let exhausted = false;
@@ -282,6 +290,19 @@ function createSequenceConstructor(): SequenceConstructor {
     }
     [ON_COMPLETE](complete: (signal: AbortSignal | undefined) => Awaitable<void>): AsyncQuerySequence<T> {
       return sequence(defer(completeEntries, this.source, complete, this.signal), this.signal);
+    }
+    [FALLBACK]<U>(
+      fallback: AsyncFallbackFactory<U>,
+      options: Pick<AsyncQuerySequenceOptions, "duplicateKeys"> = {},
+    ): AsyncQuerySequence<T | Awaited<U>> {
+      const policy = options.duplicateKeys ?? "error";
+      if (policy !== "error" && policy !== "first" && policy !== "last") {
+        throw new TypeError(`Unsupported duplicate key policy: ${String(policy)}`);
+      }
+      return sequence(
+        defer(checkedEntries, () => defer(fallbackEntries, this.source, fallback, this.signal), policy, this.signal),
+        this.signal,
+      );
     }
     async [GROUP_BY]<K extends string>(
       keyFn: (value: T, key: string, signal: AbortSignal | undefined) => Awaitable<K>,
