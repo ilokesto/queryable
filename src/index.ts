@@ -1,3 +1,10 @@
+import {
+  DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY,
+  distinctEntries, distinctUntilChangedEntries, identity,
+} from "./distinct.js";
+
+export { DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY } from "./distinct.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -105,6 +112,14 @@ interface Terminals<T> extends Source<T> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T> {
+  /** Keep the first entry for each value, using SameValueZero/reference identity. */
+  [DISTINCT](this: Result<T, M>): Result<T, M>;
+  /** Keep the first entry for each selected value; selectors receive original keys. */
+  [DISTINCT_BY]<K>(this: Result<T, M>, select: (value: T, key: string) => K): Result<T, M>;
+  /** Keep the first entry of each adjacent run of equal values. */
+  [DISTINCT_UNTIL_CHANGED](this: Result<T, M>): Result<T, M>;
+  /** Keep the first entry of each adjacent run of equal selected values. */
+  [DISTINCT_UNTIL_CHANGED_BY]<K>(this: Result<T, M>, select: (value: T, key: string) => K): Result<T, M>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -296,6 +311,18 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
 
 const queryablePrototype = {
   ...terminals,
+  [DISTINCT]<T>(this: Queryable<T>): Queryable<T> {
+    return fromEntries(distinctEntries(recordEntries(this), identity));
+  },
+  [DISTINCT_BY]<T, K>(this: Queryable<T>, select: (value: T, key: string) => K): Queryable<T> {
+    return fromEntries(distinctEntries(recordEntries(this), select));
+  },
+  [DISTINCT_UNTIL_CHANGED]<T>(this: Queryable<T>): Queryable<T> {
+    return fromEntries(distinctUntilChangedEntries(recordEntries(this), identity));
+  },
+  [DISTINCT_UNTIL_CHANGED_BY]<T, K>(this: Queryable<T>, select: (value: T, key: string) => K): Queryable<T> {
+    return fromEntries(distinctUntilChangedEntries(recordEntries(this), select));
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
@@ -345,6 +372,18 @@ class Sequence<T> implements QuerySequence<T> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
   }
 
+  [DISTINCT](): QuerySequence<T> {
+    return this.next(defer(distinctEntries, this.source, identity<T>));
+  }
+  [DISTINCT_BY]<K>(select: (value: T, key: string) => K): QuerySequence<T> {
+    return this.next(defer(distinctEntries, this.source, select));
+  }
+  [DISTINCT_UNTIL_CHANGED](): QuerySequence<T> {
+    return this.next(defer(distinctUntilChangedEntries, this.source, identity<T>));
+  }
+  [DISTINCT_UNTIL_CHANGED_BY]<K>(select: (value: T, key: string) => K): QuerySequence<T> {
+    return this.next(defer(distinctUntilChangedEntries, this.source, select));
+  }
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
   [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T>;
   [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T> {

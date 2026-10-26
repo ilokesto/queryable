@@ -103,3 +103,52 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 - Methods are shared and frozen, not bound per instance. This is a structural allocation choice, not a promise of a particular heap reduction or runtime speed.
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
+
+## Value distinctness
+
+| Operation | Result |
+| --- | --- |
+| `[DISTINCT]()` | First entry for every distinct value across the whole input |
+| `[DISTINCT_BY]((value, key) => selected)` | First entry for every distinct selected value |
+| `[DISTINCT_UNTIL_CHANGED]()` | First entry of each adjacent run of equal values |
+| `[DISTINCT_UNTIL_CHANGED_BY]((value, key) => selected)` | First entry of each adjacent run of equal selected values |
+
+```ts
+import {
+  createQueryable, DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, ENTRIES,
+} from "@ilokesto/queryable";
+
+const numbers = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+numbers[DISTINCT]()[ENTRIES](); // [["a", 1], ["c", 2]]
+numbers[DISTINCT_UNTIL_CHANGED]()[ENTRIES](); // [["a", 1], ["c", 2], ["d", 1]]
+const users = createQueryable({
+  alice: { department: "design" },
+  bob: { department: "design" },
+  charlie: { department: "engineering" },
+});
+users[DISTINCT_BY](user => user.department)[ENTRIES]();
+// Keeps alice and charlie, with their original values and keys.
+```
+
+Equality is **SameValueZero**: `NaN` equals `NaN`, and `-0` equals `0`.
+`undefined` is an ordinary value, including at the start of an adjacent run.
+Objects and functions compare by reference identity, never by inspecting their
+contents. Selectors receive the original value and key once per visited entry;
+the selected value is used only for equality, not as a replacement value or key.
+There is no custom comparator API. Arbitrary equality can require comparing each
+candidate with prior representatives rather than using Set membership.
+
+Record keys are already unique; that does not make their **values** unique.
+`PICK` ignores repeated requested keys, whereas distinct operations compare values
+or selector results across different original keys. The first matching entry wins.
+Records keep native object ordering, and ordered sequences keep traversal order.
+These operations preserve the source representation and do not mutate it.
+
+Record and eager sequence calls execute immediately. After `LAZY`, all four
+operations stream on consumption and permit downstream short-circuiting. Each
+consumption creates fresh state, even after partial consumption or an error.
+Whole-input distinct keeps a Set of selected values (space proportional to the
+number of unique selections); adjacent distinct keeps only an initialized flag
+and the previous selected value (constant state). Neither buffers all entries or
+memoizes results. Lazy views remain live and repeatable; selector errors propagate
+unchanged, and a later consumption starts over.

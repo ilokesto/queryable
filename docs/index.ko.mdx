@@ -100,3 +100,51 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 - 메서드를 공유하고 동결하지만 특정 메모리 절감률·속도 우위를 보장하지 않습니다.
 
 [벤치마크 방법](../bench/README.md) · [실측 결과](../bench/RESULTS.md) · [저장소 안내](../README.ko.md)
+
+## 값 기준 중복 제거
+
+| 연산 | 결과 |
+| --- | --- |
+| `[DISTINCT]()` | 전체 입력에서 각 값의 첫 entry 유지 |
+| `[DISTINCT_BY]((value, key) => selected)` | 각 selector 결과의 첫 entry 유지 |
+| `[DISTINCT_UNTIL_CHANGED]()` | 인접한 동일 값 구간마다 첫 entry 유지 |
+| `[DISTINCT_UNTIL_CHANGED_BY]((value, key) => selected)` | 인접한 동일 selector 결과 구간마다 첫 entry 유지 |
+
+```ts
+import {
+  createQueryable, DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, ENTRIES,
+} from "@ilokesto/queryable";
+
+const numbers = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+numbers[DISTINCT]()[ENTRIES](); // [["a", 1], ["c", 2]]
+numbers[DISTINCT_UNTIL_CHANGED]()[ENTRIES](); // [["a", 1], ["c", 2], ["d", 1]]
+const users = createQueryable({
+  alice: { department: "design" },
+  bob: { department: "design" },
+  charlie: { department: "engineering" },
+});
+users[DISTINCT_BY](user => user.department)[ENTRIES]();
+// alice와 charlie의 원본 값과 키를 유지합니다.
+```
+
+동등성은 **SameValueZero**입니다. `NaN`끼리는 같고 `-0`과 `0`도 같습니다.
+`undefined`도 일반 값이므로 인접 구간의 첫 값일 때도 보존합니다.
+객체와 함수는 내부 필드를 검사하지 않고 참조 identity로 비교합니다.
+selector는 방문한 entry마다 원본 값과 키를 한 번 받습니다. 반환값은 동등성
+판단에만 사용하며 원본 값이나 키를 대체하지 않습니다. 사용자 comparator는
+제공하지 않습니다. 임의 동등성은 Set 조회 대신 이전 대표 값들과 후보를
+비교하는 추가 비용이 필요할 수 있습니다.
+
+레코드 **키**가 유일해도 **값**은 중복될 수 있습니다. `PICK`은 요청한 키의
+중복을 무시하지만 distinct 연산은 서로 다른 원본 키의 값이나 selector
+결과를 비교합니다. 항상 첫 entry가 남습니다. 레코드는 네이티브 객체 순서,
+정렬된 시퀀스는 순회 순서를 유지합니다. 원본 표현을 유지하며 입력은 변경하지
+않습니다.
+
+레코드와 즉시 평가 시퀀스는 호출 즉시 실행합니다. `LAZY` 이후 네 연산은
+소비 시 스트리밍하며 뒤의 조기 종료 연산을 지원합니다. 부분 소비나 예외 이후에도
+매 소비마다 상태를 새로 만듭니다. 전체 distinct는 선택된 고유 값 수만큼의
+Set 공간을 사용하고, 인접 distinct는 초기화 여부와 직전 선택 값만 보관하므로
+상수 공간을 사용합니다. 전체 entry 버퍼링이나 결과 메모이제이션은 하지 않습니다.
+지연 뷰는 live·repeatable 계약을 유지하며 selector 예외는 그대로 전파됩니다.
+다음 소비는 처음부터 다시 시작합니다.
