@@ -541,9 +541,10 @@ receiver's evaluation mode: records and eager ordered sequences materialize at
 the call; lazy receivers defer work, stay live and repeatable, and acquire fresh
 iterators on every consumption. An empty expansion produces no entries, and no
 mapper runs for empty input. `LIMIT(0)` on a lazy result acquires nothing.
-Acquired iterators close on exhaustion, shortest termination, early return, and
-factory, `next`, or callback failure, including nested and sibling iterators.
-Cleanup attempts every acquired iterator; a primary failure is never replaced
+Naturally exhausted iterators are not explicitly sent `return()`. Unfinished
+iterators close on shortest termination, early return, and factory, `next`, or
+callback failure, including nested and sibling iterators.
+Cleanup attempts every unfinished acquired iterator; a primary failure is never replaced
 by a cleanup failure. Without a primary failure, the first cleanup failure
 propagates. Entry tuples and ZIP row tuples are fresh; payload references remain
 shallow.
