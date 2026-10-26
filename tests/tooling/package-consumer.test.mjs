@@ -50,9 +50,10 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     }
   }
 
+  const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   const packed = await packRelease(root, artifacts);
   await exec('tar', ['-xzf', path.join(artifacts, packed.file), '--strip-components=1', '-C', installed]);
-  assert.equal(packed.manifest.version, '0.0.1');
+  assert.equal(packed.manifest.version, manifest.version);
   assert.equal(packed.manifest.publishConfig.access, 'public');
   assert.deepEqual(packed.manifest.dependencies ?? {}, {});
   for (const entry of ['.', './streams', './operators', './symbols']) {
