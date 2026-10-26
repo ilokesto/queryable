@@ -46,6 +46,16 @@ export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js"
 
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import {
+  CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY,
+  copyBuffer, copyPair, copyBuffers, windowEntries, pairEntries,
+  splitEntries, partitionEntries as adjacentGroupEntries, validateWindowSize,
+} from "./windows.js";
+import type { EntryBuffer, EntryPair, WindowOperations } from "./windows.js";
+
+export { CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY } from "./windows.js";
+export type { EntryBuffer, EntryPair, WindowEntry } from "./windows.js";
+
 import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
 export { DuplicateKeyError } from "./entries.js";
@@ -215,7 +225,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
+interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
   /** Cache selector keys once per entry per consumption and sort lexicographically. */
   [SORT_BY](this: Result<T, M>, ...rules: OrderRules<T>): QuerySequence<T>;
   /** Keep at most K winners, then return them in stable sorted order. */
@@ -557,6 +567,21 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [CHUNK]<T>(this: Queryable<T>, size: number): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[CHUNK](size);
+  },
+  [WINDOW]<T>(this: Queryable<T>, size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[WINDOW](size, stride, partial);
+  },
+  [PAIRWISE]<T>(this: Queryable<T>): QuerySequence<EntryPair<T>> {
+    return new Sequence(recordEntries(this), false)[PAIRWISE]();
+  },
+  [SPLIT]<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[SPLIT](predicate);
+  },
+  [PARTITION_BY]<T, K>(this: Queryable<T>, selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[PARTITION_BY](selector);
+  },
   [SORT_BY]<T>(this: Queryable<T>, ...rules: OrderRules<T>): QuerySequence<T> {
     return new Sequence(sortByEntries(recordEntries(this), rules), false);
   },
@@ -670,6 +695,29 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  private buffers<U>(source: Iterable<Entry<U>>, copy: (value: U) => U): Sequence<U> {
+    return new Sequence(this.lazy ? source : defer(copyBuffers, Array.from(source), copy), this.lazy);
+  }
+
+  [CHUNK](size: number): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    return this.buffers(defer(windowEntries, this.source, size, size, true), copyBuffer<T>);
+  }
+  [WINDOW](size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    validateWindowSize(stride, "stride");
+    return this.buffers(defer(windowEntries, this.source, size, stride, partial), copyBuffer<T>);
+  }
+  [PAIRWISE](): QuerySequence<EntryPair<T>> {
+    return this.buffers(defer(pairEntries, this.source), copyPair<T>);
+  }
+  [SPLIT](predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(splitEntries, this.source, predicate), copyBuffer<T>);
+  }
+  [PARTITION_BY]<K>(selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(adjacentGroupEntries, this.source, selector), copyBuffer<T>);
   }
 
   [SORT_BY](...rules: OrderRules<T>): QuerySequence<T> {

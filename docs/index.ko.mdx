@@ -442,6 +442,71 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
 
+## 로컬 entry 버퍼와 인접 그룹
+
+아래 shared Symbol 메서드는 순서를 유지하는 `QuerySequence`를 반환합니다.
+결과 키는 각 버퍼에 포함된 첫 entry의 원본 키인 anchor입니다. 생성한 인덱스나
+selector 결과를 키로 쓰지 않으므로, 입력 키가 고유하면 숫자·특수 키를 포함한
+anchor도 고유합니다. 값은 원본 `[key, value]`를 담은 새 배열이며 튜플도 새로
+복사합니다. 중첩 값의 참조는 유지합니다. 겹친 window끼리 노출 튜플을 공유하지
+않습니다. 다음 소비가 이전 버퍼를 변경하지 않으며, 노출 배열을 수정해도 즉시
+평가 스냅샷이나 다음 소비 결과는 바뀌지 않습니다.
+
+| 메서드 | 버퍼 정책 |
+| --- | --- |
+| `[CHUNK](size)` | 겹치지 않는 묶음; 마지막 비어 있지 않은 부분 chunk 포함 |
+| `[WINDOW](size, stride = 1, partial = false)` | `0, stride, 2 * stride, ...` 위치에서 시작; stride가 작으면 겹치고 크면 간격을 건너뜀; 기본은 완전한 window만 출력 |
+| `[PAIRWISE]()` | 완전한 인접 쌍만 출력; `EntryPair<T>`는 정확히 `[[string, T], [string, T]]` |
+| `[SPLIT]((value, originalKey) => boolean)` | 일치한 entry는 구분자로 제외; 앞·연속·뒤 구분자는 빈 그룹을 만들지 않음 |
+| `[PARTITION_BY]((value, originalKey) => selected)` | selector 결과가 같은 연속 구간을 출력; 마지막 비어 있지 않은 구간 포함 |
+
+size와 stride는 양의 유한 정수여야 합니다. 잘못된 인자는 빈 입력이나 지연
+쿼리에서도 원본 획득 전에 즉시 `RangeError`를 던집니다. 빈 입력은 버퍼를
+만들지 않습니다. 짧은 입력은 부분 CHUNK를 만들지만 기본 WINDOW와 PAIRWISE는
+만들지 않습니다. WINDOW의 partial을 true로 지정하면 끝 전의 모든 시작
+위치에서 비어 있지 않은 부분 window를 만들므로, 겹치는 짧은 꼬리가 여러 개
+나올 수 있습니다.
+
+```ts
+import {
+  createQueryable, LAZY, CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+query[CHUNK](3)[ENTRIES]();
+// [["a", [["a", 1], ["b", 1], ["c", 2]]], ["d", [["d", 1]]]]
+query[WINDOW](2, 3, true)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[PAIRWISE]()[VALUES](); // 원본 entry의 완전한 인접 쌍 3개
+query[LAZY]()[SPLIT](value => value === 2)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[LAZY]()[PARTITION_BY](value => value)[VALUES]();
+// [[["a", 1], ["b", 1]], [["c", 2]], [["d", 1]]]
+```
+
+PARTITION_BY는 Set 기반 DISTINCT_BY와 같은 SameValueZero 동등성을 사용합니다.
+`NaN`끼리 같고 `-0`과 `0`도 같으며 객체와 Symbol은 identity로 비교합니다.
+저장된 `undefined`나 selector의 `undefined` 결과는 초기화 전 상태가 아닌
+일반 데이터입니다. `A,A,B,A`는 세 구간이 됩니다. 기존 GROUP_BY는 계속 같은
+문자열 그룹 키 전체를 즉시 모읍니다.
+
+레코드와 즉시 평가 시퀀스에서는 호출 즉시 실행하여 스냅샷을 만듭니다. LAZY
+이후에는 실행을 미루고 매 소비마다 live 원본을 다시 읽으며 버퍼 상태를
+독립 생성합니다. 메모이제이션은 없습니다. 콜백은 읽은 entry마다 원본 순서로
+한 번씩 `(value, originalKey)`를 받습니다. SPLIT은 그룹을 끝내는 구분자까지
+읽습니다. PARTITION_BY는 경계를 확인하려고 다음 구간의 첫 entry 하나를
+미리 읽고 selector를 계산합니다. 그 entry를 다음 구간에 포함하며 selector를
+다시 부르지 않습니다. 입력 종료에 추가 콜백은 없습니다. 조기 종료와 콜백·원본
+예외는 획득한 upstream generator를 닫습니다. 예외는 그대로 전파하고 다음
+소비는 새로 시작합니다.
+
+지연 CHUNK/WINDOW 내부에는 최대 size개의 원본 entry를 유지하고 PAIRWISE는
+직전 entry 하나를 유지합니다. 새 출력 복사본도 버퍼 크기에 비례하는 공간을
+씁니다. SPLIT과 PARTITION_BY의 현재 그룹은 구분자·selector 변경·입력 종료가
+없으면 무한히 커질 수 있으며, 무한히 이어지는 한 구간에서는 그룹을 출력할
+수 없습니다. 이 범위는 upstream identity 추적·다른 버퍼링 연산·소비자가
+보관한 결과를 제외합니다. 즉시 평가는 모든 결과 버퍼를 저장합니다.
+
 ### Async entry 원본과 Promise 정규화
 
 `createAsyncQuerySequence(factory, options?)`는 항상 지연 실행하는 별도
