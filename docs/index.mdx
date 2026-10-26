@@ -552,3 +552,53 @@ serialization representation. Existing string-keyed `GROUP_BY` remains unchanged
 Empty inputs return fresh empty collections. Factory-source duplicate policies
 still apply before these operations, so default duplicate keys throw rather
 than silently overwrite values in `TO_MAP`.
+
+## Async cancellation and lifetime hooks
+
+Pass `{ signal }` to `createAsyncQuerySequence`. The factory receives that signal;
+async `MAP`, `WHERE`, `FIND`, `SOME`, `GROUP_BY`, and the synchronous `SORT`
+comparator receive it after their existing arguments. It can be `undefined`.
+Callbacks and factories with fewer arguments continue to work.
+
+```ts
+import { createAsyncQuerySequence, FINALIZE, MAP, ON_COMPLETE, VALUES } from "@ilokesto/queryable";
+
+const controller = new AbortController();
+const query = createAsyncQuerySequence(
+  signal => [["a", signal?.aborted ? 0 : 1]],
+  { signal: controller.signal },
+)[MAP](async (value, key, signal) => value + key.length)
+  [ON_COMPLETE](() => { console.log("upstream exhausted"); })
+  [FINALIZE](outcome => { console.log(outcome.reason); });
+await query[VALUES](); // [2]
+```
+
+An already-aborted signal rejects with its exact `reason` before factory
+acquisition. Abort also interrupts pending factory, `next`, value, and callback
+waits. Each wait removes its abort listener when settled; late external
+rejections remain handled. A consumed sequence with the same aborted signal
+rejects again; create a new controller/query to start a new lifetime.
+Buffered SORT, negative LIMIT, `"last"` collision results, and snapshot groups
+check cancellation before each output, including after a comparator aborts.
+
+Cancellation stops consumption, not arbitrary external work. Pass the received
+signal to that work for cooperative cancellation. On abort, an acquired iterator's
+`return()` is attempted once without waiting for a non-cooperative pending
+`next()` to release its queue. Its later cleanup rejection cannot replace the
+abort reason. Other exits await iterator cleanup. Native async generators may
+therefore finish external cleanup later if their pending work ignores the signal.
+
+`FINALIZE((outcome, signal) => ...)` is awaited once per started consumption,
+including early return and error. `ConsumptionOutcome` is `"complete"` or
+`"return"`, or `"error"`/`"abort"` with an `error` field. This describes the
+hook's upstream stage: a downstream failure closes it as a return, while a
+failure inside its upstream is observable as an error. Place hooks accordingly.
+An existing upstream error/abort wins over a finalizer failure; without a primary
+failure, cleanup failure rejects the consumer. Finalizers must settle for the
+consumer to settle.
+
+`ON_COMPLETE(callback)` runs only after its own upstream exhausts normally, not
+after early return or failure. For example, a hook after `LIMIT(1)` sees that
+limited stage complete; a hook before it sees early return. No hook or source
+runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
+shared and frozen, with fresh execution state on each consumption.
