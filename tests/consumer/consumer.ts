@@ -1,7 +1,7 @@
 import {
-  AT, COUNT_BY, EVERY, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY,
-  INCLUDES, IS_EMPTY, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
-  VALUES, WHERE, createQueryable,
+  AT, COUNT_BY, EVERY, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
+  INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
+  TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable, iterateAsyncEntries,
 } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "@ilokesto/queryable";
 
@@ -22,6 +22,15 @@ export const total = mapped[REDUCE]((acc, value, key) => ({
   keys: [...acc.keys, key],
 }), initial);
 export const values: string[] = narrowed[VALUES].call(narrowed);
+export const asyncQuery = createAsyncQuerySequence(() => [["number", Promise.resolve(1)]]);
+export const asyncMapped = asyncQuery[MAP](async value => String(value));
+export const asyncValues: Promise<string[]> = asyncMapped[VALUES]();
+export const asyncView: AsyncIterable<[string, number]> = iterateAsyncEntries(asyncQuery);
+export const mappedKeys: string[] = mapped[KEYS]();
+export const mappedMap: Map<string, number> = mapped[TO_MAP]();
+export const mappedSet: Set<number> = mapped[TO_SET]();
+export const objectGroupKey = {};
+export const objectGroups: Map<object, QuerySequence<number>> = mapped[GROUP_BY_MAP](() => objectGroupKey);
 
 export const literalCounts = mapped[COUNT_BY](() => "positive" as const);
 export const literalFold = mapped[REDUCE_BY](

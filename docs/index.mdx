@@ -447,3 +447,108 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 `PICK`, grouping, sorting, and collection outputs receive the same unique-key
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
+
+### Async entry sources and Promise normalization
+
+`createAsyncQuerySequence(factory, options?)` is a separate, always-deferred
+`AsyncQuerySequence<Awaited<T>>`. Its `AsyncEntrySourceFactory<T>` returns an
+`Iterable<readonly [string, T]>`, an `AsyncIterable<readonly [string, T]>`, or a
+PromiseLike of either. Construction and chain operations do not acquire the
+source. Each consumption calls the factory again; return a fresh iterator or a
+repeatable iterable. `LAZY` remains live, repeatable, and nonmemoized.
+
+```ts
+import {
+  createAsyncQuerySequence, iterateAsyncEntries, MAP, WHERE, LIMIT, VALUES, GROUP_BY,
+} from "@ilokesto/queryable";
+
+const rows = new Map([["2", Promise.resolve(20)], ["1", Promise.resolve(10)]]);
+const query = createAsyncQuerySequence(() => rows.entries())
+  [MAP](async (value, key) => ({ key, doubled: value * 2 }))
+  [WHERE](async value => value.doubled >= 20);
+const values = await query[LIMIT](1)[VALUES](); // [{ key: "2", doubled: 40 }]
+for await (const [key, value] of iterateAsyncEntries(query)) {
+  // Explicit entry view; a break closes upstream.
+}
+const groups = await query[GROUP_BY](async value => value.doubled > 20 ? "high" : "low");
+const high = await groups.high?.[VALUES]();
+```
+
+- Source values and `MAP` results are intentionally awaited, recursively through
+  PromiseLike layers. Plain, Promise, mixed, `never`, and `undefined` types use
+  `Awaited` inference. This is not opaque Promise storage: a value's `then`
+  property may be read, and a rejection propagates. Properties inside a normal
+  value object are not recursively traversed. Synchronous queries still store
+  Promises and other values unchanged.
+- `MAP`, `WHERE`, `FIND`, `SOME`, and `GROUP_BY` callbacks receive
+  `(awaitedValue, originalKey)` in source order. Predicates and grouping callbacks
+  may return PromiseLike results. Each callback completes before the next entry
+  is requested; there is no concurrent work or prefetch. Synchronous type guards
+  narrow `WHERE`/`FIND`; async boolean predicates do not.
+- `COUNT`, `FIRST`, `VALUES`, `ENTRIES`, `FIND`, and `SOME` explicitly return
+  Promises. Empty results are respectively `0`, `undefined`, a fresh empty array,
+  a fresh empty array, `undefined`, and `false`, without invoking callbacks.
+  Stored `undefined` still counts as an entry.
+- `iterateAsyncEntries(query)` and `iterateAsyncValues(query)` return explicit,
+  repeatable async iterable views, with independent cursors and fresh entry
+  tuples. The query has no default iterator. Methods use the existing Symbols on
+  one frozen shared async prototype, separate from the synchronous prototype.
+- `SORT` defers a full buffer until consumption and takes a synchronous
+  `(leftValue, rightValue) => number` comparator. Ties stay stable; numeric and
+  special keys retain sequence order. `LIMIT` keeps the same `slice(0, n)`
+  semantics, including finite-negative buffering and no acquisition for an empty
+  limit. `FIRST`, `FIND`, `SOME`, and positive `LIMIT` short-circuit.
+- `GROUP_BY` starts consumption when called, not when its returned Promise is
+  awaited. Awaiting it finishes all grouping callbacks and returns
+  `Partial<Record<K, AsyncQuerySequence<T>>>` snapshot groups. Reconsuming a group
+  does not rerun the original source or grouping callback. Each group's entries
+  keep input order; the null-prototype group record uses native object key order
+  and safely supports `__proto__`/`constructor`. Further group transformations are
+  deferred async operations.
+- `duplicateKeys: "error" | "first" | "last"` uses the same identity rules and
+  `DuplicateKeyError` as sync factories. Every pulled value is awaited, including
+  duplicates later skipped by `"first"`. `"last"` buffers before yielding, with
+  last values in first-key positions. Identity state is fresh per consumption;
+  prefix consumers check only pulled entries.
+- The source protocol closes an acquired, unfinished iterator exactly once on
+  rejected `next()`, rejected values/callbacks, or early exit, and awaits its
+  `return()` before settling. Natural exhaustion does not call `return()`.
+  An existing failure keeps its identity if cleanup also fails; otherwise cleanup
+  failure rejects the terminal or view. Factory errors reject consumption; the
+  next consumption tries a fresh factory call. Sources must implement `return()`
+  to release resources. Cancellation, finalization hooks, concurrency, retries,
+  and events are not part of this async foundation.
+
+## Native collection outputs and Map-key groups
+
+`KEYS()` returns a fresh string array in query order. `TO_MAP()` returns a fresh
+`Map<string, T>` of original keys and shallow values, including stored
+`undefined`. `TO_SET()` collects values in first-occurrence order using native
+SameValueZero equality: `NaN` matches itself, `-0` matches `0`, and objects use
+reference identity. These terminals consume the query; lazy work runs again
+on every call. Changing a returned collection does not modify the source.
+
+`GROUP_BY_MAP((value, originalKey) => groupKey)` accepts arbitrary group keys:
+objects, Symbols, numbers, `undefined`, and other native Map keys. It calls the
+selector once per entry and eagerly materializes independent groups even on
+lazy input. Map iteration follows the first occurrence of each group key.
+Members retain original keys and input order (native object order for record
+groups, sequence order for ordered/lazy groups). Values remain shallow references.
+
+```ts
+import { createQueryable, GROUP_BY_MAP, KEYS, TO_MAP, TO_SET } from "@ilokesto/queryable";
+
+const team = {};
+const users = createQueryable({ alice: { team }, bob: { team } });
+const groups = users[GROUP_BY_MAP](user => user.team);
+groups.get(team)?.[KEYS](); // ["alice", "bob"]
+users[TO_MAP]().get("alice"); // { team }
+users[TO_SET]().size; // 2: distinct user objects
+```
+
+Group keys are never stringified or exposed as record keys. The returned Map
+is not a query and has no implicit JSON/object conversion; explicitly choose a
+serialization representation. Existing string-keyed `GROUP_BY` remains unchanged.
+Empty inputs return fresh empty collections. Factory-source duplicate policies
+still apply before these operations, so default duplicate keys throw rather
+than silently overwrite values in `TO_MAP`.

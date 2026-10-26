@@ -441,3 +441,104 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 중복 키를 조용히 덮어쓰지 않고 거부합니다. PICK·그룹·정렬·컬렉션 출력도
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
+
+### Async entry 원본과 Promise 정규화
+
+`createAsyncQuerySequence(factory, options?)`는 항상 지연 실행하는 별도
+`AsyncQuerySequence<Awaited<T>>`입니다. `AsyncEntrySourceFactory<T>`는
+`Iterable<readonly [string, T]>`, `AsyncIterable<readonly [string, T]>`,
+또는 둘 중 하나를 감싼 PromiseLike를 반환합니다. 생성과 체인 연산은 원본을
+획득하지 않습니다. 소비할 때마다 factory를 다시 호출하므로 새 iterator나
+반복 가능한 iterable을 반환하세요. `LAZY`도 live·repeatable·nonmemoized입니다.
+
+```ts
+import {
+  createAsyncQuerySequence, iterateAsyncEntries, MAP, WHERE, LIMIT, VALUES, GROUP_BY,
+} from "@ilokesto/queryable";
+
+const rows = new Map([["2", Promise.resolve(20)], ["1", Promise.resolve(10)]]);
+const query = createAsyncQuerySequence(() => rows.entries())
+  [MAP](async (value, key) => ({ key, doubled: value * 2 }))
+  [WHERE](async value => value.doubled >= 20);
+const values = await query[LIMIT](1)[VALUES](); // [{ key: "2", doubled: 40 }]
+for await (const [key, value] of iterateAsyncEntries(query)) {
+  // 명시적 entry 뷰이며 break는 upstream을 닫음
+}
+const groups = await query[GROUP_BY](async value => value.doubled > 20 ? "high" : "low");
+const high = await groups.high?.[VALUES]();
+```
+
+- 원본 값과 `MAP` 결과는 중첩 PromiseLike까지 의도적으로 await합니다.
+  plain·Promise·mixed·`never`·`undefined` 타입은 `Awaited`로 추론합니다.
+  Promise를 opaque 값으로 보관하지 않으므로 값의 `then` 속성을 읽을 수 있고,
+  rejection은 전파합니다. 일반 값 객체 안의 속성을 재귀 순회하지는 않습니다.
+  기존 동기 쿼리는 계속 Promise와 다른 값을 그대로 저장합니다.
+- `MAP`, `WHERE`, `FIND`, `SOME`, `GROUP_BY` 콜백은 원본 순서대로
+  `(awaitedValue, originalKey)`를 받습니다. predicate와 grouping 콜백도
+  PromiseLike 결과를 반환할 수 있습니다. 콜백이 끝나야 다음 entry를 요청하며
+  동시 실행이나 prefetch는 없습니다. 동기 타입 가드는 `WHERE`/`FIND`를 좁히지만
+  async boolean predicate는 타입을 좁히지 않습니다.
+- `COUNT`, `FIRST`, `VALUES`, `ENTRIES`, `FIND`, `SOME`은 명시적으로
+  Promise를 반환합니다. 빈 결과는 각각 `0`, `undefined`, 새 빈 배열,
+  새 빈 배열, `undefined`, `false`이며 콜백을 호출하지 않습니다.
+  저장된 `undefined`는 여전히 하나의 entry입니다.
+- `iterateAsyncEntries(query)`와 `iterateAsyncValues(query)`는 독립 커서와
+  새 entry 튜플을 가진 명시적·반복 가능한 async iterable 뷰입니다. 쿼리 자체에는
+  기본 iterator가 없습니다. 기존 Symbol을 쓰는 메서드를 하나의 동결된 async
+  prototype에서 공유하며, 동기 prototype과는 분리합니다.
+- `SORT`는 소비할 때 전체를 버퍼링하고 동기
+  `(leftValue, rightValue) => number` comparator를 받습니다. 동점은 안정적으로
+  유지하며 숫자·특수 키도 시퀀스 순서를 보존합니다. `LIMIT`은 유한 음수의
+  버퍼링과 빈 limit의 원본 미획득을 포함해 `slice(0, n)` 의미를 유지합니다.
+  `FIRST`, `FIND`, `SOME`, 양수 `LIMIT`은 조기 종료할 수 있습니다.
+- `GROUP_BY`는 반환된 Promise를 await할 때가 아니라 호출할 때 소비를 시작합니다.
+  await 완료 시 모든 grouping 콜백이 끝나며
+  `Partial<Record<K, AsyncQuerySequence<T>>>` 스냅샷 그룹을 반환합니다.
+  그룹을 다시 소비해도 원본이나 grouping 콜백을 다시 실행하지 않습니다.
+  각 그룹 entry는 입력 순서를 유지합니다. null-prototype 그룹 레코드는 네이티브
+  객체 키 순서를 따르며 `__proto__`/`constructor`도 안전하게 지원합니다.
+  그룹에 추가하는 변환은 지연 async 연산입니다.
+- `duplicateKeys: "error" | "first" | "last"`는 동기 factory와 같은 identity
+  규칙 및 `DuplicateKeyError`를 사용합니다. `"first"`에서 나중에 버리는 중복도
+  포함하여 실제 읽은 값은 모두 await합니다. `"last"`는 출력 전 전체를 버퍼링하고
+  각 키의 첫 위치에 마지막 값을 둡니다. identity 상태는 매 소비마다 새로 만들고,
+  prefix 소비는 실제 읽은 entry만 검사합니다.
+- source protocol은 `next()` rejection, 값·콜백 rejection, 조기 종료 시
+  획득했으나 소진하지 않은 iterator를 정확히 한 번 닫고, `return()` 완료까지
+  기다린 뒤 결과를 확정합니다. 자연 소진에는 `return()`을 호출하지 않습니다.
+  기존 실패가 있으면 cleanup도 실패하더라도 원래 실패 identity를 유지하고,
+  기존 실패가 없으면 cleanup 실패로 terminal 또는 뷰를 reject합니다.
+  factory 실패도 소비를 reject하며 다음 소비는 새 factory 호출로 시작합니다.
+  자원을 해제하려면 원본에 `return()`을 구현해야 합니다. 취소·finalization hook·
+  동시 실행·retry·event는 이번 async 기반에 포함하지 않습니다.
+
+## 네이티브 컬렉션 출력과 Map 키 그룹
+
+`KEYS()`는 쿼리 순서의 새로운 문자열 배열을, `TO_MAP()`은 원래 키와 얕은 값을
+가진 새로운 `Map<string, T>`를 반환합니다. 저장된 `undefined`도 보존합니다.
+`TO_SET()`은 첫 출현 순서와 네이티브 SameValueZero 동등성을 사용합니다.
+`NaN`끼리, `-0`과 `0`은 같고 객체는 참조가 같아야 합니다. 모두 terminal이므로
+지연 작업은 호출마다 다시 실행됩니다. 반환 컬렉션을 수정해도 원본은 바뀌지 않습니다.
+
+`GROUP_BY_MAP((value, originalKey) => groupKey)`는 객체·Symbol·숫자·`undefined`
+등 임의의 Map 키를 받습니다. entry마다 selector를 한 번 호출하며 지연 입력도
+즉시 소비하여 독립 그룹을 만듭니다. Map의 그룹 순서는 각 키의 첫 출현 순서이고
+그룹 멤버는 원래 키와 입력 순서를 유지합니다. 레코드 그룹은 네이티브 객체 순서,
+정렬·지연 그룹은 시퀀스 순서를 따릅니다. 값은 계속 얕은 참조입니다.
+
+```ts
+import { createQueryable, GROUP_BY_MAP, KEYS, TO_MAP, TO_SET } from "@ilokesto/queryable";
+
+const team = {};
+const users = createQueryable({ alice: { team }, bob: { team } });
+const groups = users[GROUP_BY_MAP](user => user.team);
+groups.get(team)?.[KEYS](); // ["alice", "bob"]
+users[TO_MAP]().get("alice"); // { team }
+users[TO_SET]().size; // 2: 서로 다른 사용자 객체
+```
+
+그룹 키를 문자열이나 레코드 키로 바꾸지 않습니다. 반환 Map은 쿼리가 아니며
+JSON·객체로 자동 변환하지 않으므로 직렬화 표현을 직접 선택해야 합니다.
+기존 문자열 키 `GROUP_BY`는 유지합니다. 빈 입력은 새로운 빈 컬렉션을 반환하고,
+factory 원본의 중복 키 정책은 연산 전에 적용되므로 기본 `TO_MAP`은 중복을
+조용히 덮어쓰는 대신 오류를 냅니다.
