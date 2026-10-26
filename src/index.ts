@@ -3,6 +3,8 @@ import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export { createShapeQueryable } from "./shape.js";
+export type { ShapeEntry, ShapeQueryable, ShapeSnapshot } from "./shape.js";
 
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
