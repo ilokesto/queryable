@@ -40,6 +40,14 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   await cp(path.join(root, 'tests/consumer'), consumer, { recursive: true });
   await writeFile(path.join(consumer, 'package.json'), '{"private":true,"type":"module"}\n');
 
+  const example = await readFile(path.join(consumer, 'docs-examples.ts'), 'utf8');
+  for (const document of ['docs/index.mdx', 'docs/index.ko.mdx']) {
+    const source = await readFile(path.join(root, document), 'utf8');
+    const fences = [...source.matchAll(/^```ts title="migration-example"\r?\n([\s\S]*?)^```$/gm)];
+    assert.equal(fences.length, 1, `${document}: one executable migration module`);
+    assert.equal(fences[0][1], example, `${document}: shipped example matches packed consumer`);
+  }
+
   const packed = await packRelease(root, artifacts);
   await exec('tar', ['-xzf', path.join(artifacts, packed.file), '--strip-components=1', '-C', installed]);
   assert.equal(packed.manifest.version, '0.0.1');
@@ -49,7 +57,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     assert.ok((await readFile(path.join(installed, file))).length > 0, file);
   }
 
-  const program = ts.createProgram(['consumer.ts', 'functional.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
+  const program = ts.createProgram(['consumer.ts', 'functional.ts', 'shape.ts', 'docs-examples.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -59,6 +67,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.ok((await readFile(path.join(consumer, 'dist/consumer.d.ts'))).length > 0);
   await exec(process.execPath, ['runtime.mjs'], { cwd: consumer });
   await exec(process.execPath, ['dist/functional.js'], { cwd: consumer });
+  await exec(process.execPath, ['docs-examples-runtime.mjs'], { cwd: consumer, timeout: 10_000 });
 
   await writeFile(path.join(consumer, 'functional-downstream.ts'), [
     'import { narrowed, mapped, ordered, deferred, transform, nativeResult, found } from "./dist/functional.js";',

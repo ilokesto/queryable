@@ -24,6 +24,125 @@ const names = users
   [VALUES](); // ["Bob", "Alice"]
 ```
 
+## Migrating from native JavaScript, Remeda, and LINQ
+
+The table maps intent, not drop-in signatures. Remeda names refer to the repository's development-only 2.51 API; LINQ means C# LINQ to Objects, not a database provider. Queryable adds no runtime dependency on either. Start by choosing a mutable homogeneous record, an ordered sequence, or a readonly heterogeneous shape snapshot.
+
+| Intent | Native JavaScript | Remeda | LINQ to Objects | Queryable migration |
+| --- | --- | --- | --- | --- |
+| Filter values | array.filter(predicate) | filter | Where | WHERE or where; callbacks receive value and original string key, not array index |
+| Project fields within each value | `array.map(user => ({ name: user.name }))` | `map` / `mapValues` | `Select` | `MAP(user => ({ name: user.name }))`; never `PICK` |
+| Select record keys | Object.fromEntries(selectedEntries) | pick(record, keys) | Filter key/value pairs by key | PICK(...keys) selects whole stored values, ignores absent/duplicate keys, retains stored undefined |
+| Sort then take a prefix | array.toSorted(compare).slice(0, n) | sort / take | OrderBy / Take | SORT(compare)[LIMIT](n) returns a sequence; ENTRIES / VALUES retain comparator order |
+| Compose operations | Nested calls or functions | pipe | Extension-method chain | Symbol methods or imported pipe, where, map, values; lower-case adapters keep the same execution contracts |
+| Defer and repeat | A fresh generator per traversal | Explicit pipeline evaluation | Deferred enumerable | Explicit LAZY on sync queries; live, repeatable, nonmemoized, not a cached result |
+| Group and materialize | Object.groupBy / arrays | groupBy | GroupBy / ToArray | GROUP_BY executes immediately, including pending lazy work, and returns snapshot groups |
+| Await values and release resources | for await with try/finally and AbortSignal | Do not infer async ownership from a sync pipe | Async enumeration is a separate contract from IEnumerable | createAsyncQuerySequence awaits source values and MAP results sequentially; terminals return Promises; factory and external work own their resources |
+
+Record keys retain native object order: integer-index keys enumerate before other strings even if requested later. SORT changes representation to an ordered sequence; TO_OBJECT restores native object ordering. Filtering and mapping preserve original keys, including special keys such as __proto__ and constructor. The removed SELECT name becomes PICK only for record-key selection; LINQ Select instead maps to MAP.
+
+LAZY reads the constructed query record on each consumption, not the original input object (construction already shallow-copied it). Callbacks run again on each terminal and observe between-consumption record mutations. Add LAZY before expensive work: adding it after an eager sort cannot undo that sort. SORT, sequence PICK, and finite negative LIMIT buffer the entire upstream at consumption; a later LIMIT(1) cannot bypass that barrier. GROUP_BY is an eager barrier even on lazy input. Neither deferred execution nor pipe implies streaming through a barrier or memoization.
+
+createShapeQueryable(input, whitelist) snapshots only allowed own enumerable string keys, even when structural typing hides extra runtime properties. Its outputs and entry tuples are shallow readonly/frozen, keys may be absent, and nested objects remain shared references. It is not a mutable Queryable record and does not promise the full sequence API.
+
+For async migration, supply a fresh iterator or repeatable iterable from the factory on every consumption. Use iterateAsyncEntries / iterateAsyncValues for explicit async views. Cancellation interrupts consumption with the exact abort reason; it cannot forcibly cancel arbitrary external work. Forward the received signal to that work and implement iterator return/finally cleanup. Ordinary early exits await cleanup; abort attempts return without waiting for non-cooperative pending next work. FINALIZE is awaited once per started consumption; ON_COMPLETE runs only when its upstream exhausts normally. A reused aborted signal remains aborted.
+
+### Executable migration example
+
+This complete module is shared by both languages and the packed-consumer fixture. The tooling gate checks exact code equality (not prose), strictly typechecks the module against the packed declarations, emits it, and runs behavioral assertions with a bounded process timeout. Expected results include numeric/native vs comparator order, eight callback calls over two live consumptions, all four visits before a buffered prefix, immediate grouping, no secret shape key, and opened → source-key → closed → abort cancellation events. The existing shape consumer also compiles rejected readonly assignments independently.
+
+```ts title="migration-example"
+import {
+  createQueryable, createShapeQueryable, createAsyncQuerySequence,
+  ENTRIES, FINALIZE, GROUP_BY, LAZY, LIMIT, MAP, PICK, SORT, TO_OBJECT, VALUES,
+  pipe, where, map, values,
+} from "@ilokesto/queryable";
+
+// Original keys survive filtering and mapping; integer keys use object order.
+const migrationInput = { "10": 10, "2": 2, ["__proto__"]: 3, constructor: 4 };
+const migrationRecord = createQueryable(migrationInput);
+export const originalEntries = migrationRecord[ENTRIES]();
+export const selectedEntries = migrationRecord[PICK]("10", "2", "__proto__", "2")[ENTRIES]();
+const migrationOrdered = migrationRecord[SORT]((left, right) => right - left);
+export const orderedEntries = migrationOrdered[ENTRIES]();
+export const objectKeys = Object.keys(migrationOrdered[TO_OBJECT]());
+export const projected = createQueryable({ alice: { name: "Alice", age: 25 } })
+  [MAP](user => ({ name: user.name }))[VALUES]();
+export const functionalNames: string[] = pipe(
+  migrationRecord,
+  where((value: number) => value >= 3),
+  map((value: number, key: string) => `${key}:${value}`),
+  values,
+);
+
+// Construction copied the input; LAZY observes the query record, not that input.
+let migrationCalls = 0;
+const migrationLive = migrationRecord[LAZY]()[MAP](value => {
+  migrationCalls += 1;
+  return value * 2;
+});
+export const firstLive = migrationLive[VALUES]();
+migrationInput["2"] = 99;
+migrationRecord["2"] = 7;
+export const secondLive = migrationLive[VALUES]();
+export const liveCalls = migrationCalls;
+
+// Full-input buffering happens before a downstream prefix can be returned.
+const migrationBarrierVisits: string[] = [];
+export const bufferedPrefix = migrationRecord[LAZY]()
+  [MAP]((value, key) => { migrationBarrierVisits.push(key); return value; })
+  [SORT]((left, right) => right - left)[LIMIT](1)[VALUES]();
+export const barrierVisits = migrationBarrierVisits;
+let migrationGroupCalls = 0;
+const migrationGroups = migrationRecord[LAZY]()[GROUP_BY](value => {
+  migrationGroupCalls += 1;
+  return value >= 4 ? "high" : "low";
+});
+export const eagerGroupCalls = migrationGroupCalls;
+export const highGroup = migrationGroups.high?.[VALUES]();
+
+// A structural type may hide extra runtime properties; whitelist actual keys.
+const migrationWide = { count: 1, label: "one", secret: "hidden" };
+const migrationPublic: { count: number; label: string } = migrationWide;
+const migrationShape = createShapeQueryable(migrationPublic, ["count", "label"]);
+export const shapeObject: Readonly<{ count?: number; label?: string }> =
+  migrationShape[TO_OBJECT]();
+export const shapeEntries = migrationShape[ENTRIES]();
+export const shapeFrozen = Object.isFrozen(shapeObject)
+  && Object.isFrozen(shapeEntries) && shapeEntries.every(Object.isFrozen);
+
+// Install the cancellation listener before announcing the pending callback.
+export async function cancelMigration() {
+  const controller = new AbortController();
+  const reason = new Error("migration cancelled");
+  const events: string[] = [];
+  let announceStarted: () => void = () => {};
+  const started = new Promise<void>(resolve => { announceStarted = resolve; });
+  const query = createAsyncQuerySequence(function* () {
+    events.push("opened");
+    try {
+      yield ["source-key", Promise.resolve(1)] as const;
+    } finally {
+      events.push("closed");
+    }
+  }, { signal: controller.signal })
+    [MAP]((_value, key, signal) => new Promise<number>((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      events.push(key);
+      announceStarted();
+    }))
+    [FINALIZE](outcome => { events.push(outcome.reason); });
+  const pending = query[VALUES]().then(
+    result => ({ result, error: undefined }),
+    (error: unknown) => ({ result: undefined, error }),
+  );
+  await started;
+  controller.abort(reason);
+  const outcome = await pending;
+  return { events, sameReason: outcome.error === reason, result: outcome.result };
+}
+```
+
 ## Operations
 
 | Operation | Result |
@@ -686,7 +805,7 @@ produce a group from an infinite uninterrupted run. These bounds exclude
 upstream identity tracking, buffering operators, and results retained by the
 consumer. Eager evaluation necessarily stores all resulting buffers.
 
-### Async entry sources and Promise normalization
+## Async entry sources and Promise normalization
 
 `createAsyncQuerySequence(factory, options?)` is a separate, always-deferred
 `AsyncQuerySequence<Awaited<T>>`. Its `AsyncEntrySourceFactory<T>` returns an
@@ -754,8 +873,9 @@ const high = await groups.high?.[VALUES]();
   An existing failure keeps its identity if cleanup also fails; otherwise cleanup
   failure rejects the terminal or view. Factory errors reject consumption; the
   next consumption tries a fresh factory call. Sources must implement `return()`
-  to release resources. Cancellation, finalization hooks, concurrency, retries,
-  and events are not part of this async foundation.
+  to release resources. See the cancellation and lifetime section below for
+  signal ownership and finalization; this sequential source does not imply
+  concurrency, retries, or event subscriptions.
 
 ## Native collection outputs and Map-key groups
 
