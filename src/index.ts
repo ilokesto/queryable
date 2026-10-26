@@ -23,6 +23,8 @@ import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
+export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 
 /** Eagerly group by arbitrary native Map key identity. */
 export const GROUP_BY_MAP = Symbol("group_by_map");
