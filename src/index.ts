@@ -325,6 +325,18 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
   return fromEntries(filterEntries(recordEntries(this), predicate));
 }
 
+function zip<T, U extends readonly unknown[]>(
+  this: Source<T>, ...sources: { [K in keyof U]: Source<U[K]> }
+): QuerySequence<[T, ...U]>;
+function zip<T>(this: Source<T>, ...sources: Source<unknown>[]): QuerySequence<unknown[]> {
+  const factories: EntrySourceFactory<unknown>[] = [
+    () => this[ITERATE](),
+    ...sources.map(source => () => source[ITERATE]()),
+  ];
+  // The helper emits one value per source, in the variadic signature's order.
+  return this[COMBINE](() => zipEntries(factories));
+}
+
 const combinationMethods = {
   [CONCAT]<T, U>(this: Source<T>, sources: readonly Source<U>[], options?: QuerySequenceOptions): QuerySequence<T | U> {
     const factories: EntrySourceFactory<T | U>[] = [
@@ -333,21 +345,7 @@ const combinationMethods = {
     ];
     return this[COMBINE](() => concatEntries(factories), options);
   },
-  [ZIP]<T, U extends readonly unknown[]>(
-    this: Source<T>,
-    ...sources: { [K in keyof U]: Source<U[K]> }
-  ): QuerySequence<[T, ...U]> {
-    const factories: EntrySourceFactory<unknown>[] = [
-      () => this[ITERATE](),
-      ...sources.map(source => () => source[ITERATE]()),
-    ];
-    return this[COMBINE](function* () {
-      for (const [key, values] of zipEntries(factories)) {
-        // zipEntries emits exactly one value per source, in this tuple's source order.
-        yield [key, values as [T, ...U]];
-      }
-    });
-  },
+  [ZIP]: zip,
   [FLAT_MAP]<T, U>(
     this: Source<T>,
     mapper: (value: T, originalKey: string) => Iterable<Entry<U>>,
