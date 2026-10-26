@@ -1,6 +1,9 @@
 {
   "name": "@ilokesto/queryable",
   "version": "0.0.1",
+  "engines": {
+    "node": ">=24.22.1"
+  },
   "private": false,
   "packageManager": "pnpm@10.17.1",
   "description": "A shared-prototype, Symbol-based record query DSL.",
