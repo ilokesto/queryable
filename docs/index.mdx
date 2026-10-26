@@ -103,3 +103,38 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 - Methods are shared and frozen, not bound per instance. This is a structural allocation choice, not a promise of a particular heap reduction or runtime speed.
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
+
+## Predicate narrowing and property groups
+
+`WHERE(Boolean)` and `FIND(Boolean)` remove literal `false`, `0`, `0n`, `""`, `null`, and `undefined` from the value type. Broad `number`, `bigint`, and `string` stay broad: TypeScript cannot express all nonzero, non-NaN numbers or nonempty strings. A callback returning literal `false` gives an empty `Queryable<never>` or `QuerySequence<never>`; `FIND` returns `undefined`. Explicit and inferred type guards still narrow, while ordinary boolean callbacks keep the original value type. These signatures apply to eager records, ordered sequences, and lazy sequences without changing evaluation order.
+
+```ts
+import { createQueryable, WHERE, FIND, VALUES, isDefined, isNonNullish, negate } from "@ilokesto/queryable";
+
+const mixed = createQueryable<0 | false | "" | "cat" | null | undefined>({
+  zero: 0, no: false, empty: "", cat: "cat", nil: null, missing: undefined,
+});
+mixed[WHERE](Boolean)[VALUES](); // ["cat"]; Queryable<"cat">
+mixed[WHERE](isDefined)[VALUES](); // [0, false, "", "cat", null]
+mixed[WHERE](isNonNullish)[VALUES](); // [0, false, "", "cat"]
+mixed[WHERE](negate(isNonNullish))[VALUES](); // [null, undefined]
+mixed[FIND](() => false); // undefined
+```
+
+`isDefined` excludes only `undefined`; `isNonNullish` excludes `null` and `undefined`. `negate(predicate)` forwards all callback arguments and negates its result. Only the supplied, branded `isDefined` and `isNonNullish` helpers have complement narrowing. Arbitrary guards return a boolean predicate: a guard for positive numbers may also reject negative numbers, so its negation cannot safely exclude all numbers. Wrapping either helper in an ordinary callback loses the branded complement contract.
+
+`GROUP_BY_PROP(property)` correlates string discriminant keys with the union members that can have that property value. Unlike callback-based `GROUP_BY`, its groups narrow independently and remain optional, even for required discriminants or empty input.
+
+```ts
+import { createQueryable, GROUP_BY_PROP, VALUES } from "@ilokesto/queryable";
+
+type Pet = { readonly kind: "cat"; meow: true } | { readonly kind: "dog"; bark: true };
+const pets = createQueryable<Pet>({ alice: { kind: "cat", meow: true } });
+const groups = pets[GROUP_BY_PROP]("kind");
+groups.cat?.[VALUES](); // cat members only, with original key "alice"
+groups.dog; // undefined here; Queryable<dog member> | undefined
+```
+
+Optional string discriminants and union members without the property are supported. Missing or `undefined` values are skipped, not coerced to a group name. Group member types preserve their original optional and readonly properties conservatively; grouping does not rewrite an optional property as required. Numeric or mixed string/number discriminant properties are not accepted; there is no implicit numeric-key coercion guarantee. At runtime, only string property values form groups.
+
+Like `GROUP_BY`, `GROUP_BY_PROP` consumes its input immediately, including pending lazy work, and returns eager shallow snapshots. It reads each member's discriminant once in traversal order, preserves original member keys and record/sequence mode, supports empty and special string keys, and never repeats grouping work when a group is consumed again. Property getter errors propagate unchanged. Nested values remain shared references.
