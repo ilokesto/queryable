@@ -448,6 +448,63 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Functional composition
+
+Lowercase adapters call the existing Symbol methods with their receiver intact.
+`where` and `find` also preserve the core Boolean and literal-false narrowing overloads.
+`where(predicate)`, `map(mapper)`, `limit(n)`, `pick(...keys)`, and
+`sort(comparator)` are data-last unary stages. `lazy` is itself a unary stage.
+`where` supports type guards; `map` changes the value type; `sort` and `lazy`
+transition records to sequences. Other transformations retain the input mode.
+`pick` still selects whole record keys, not fields within values.
+
+```ts
+import {
+  compose, createQueryable, lazy, limit, map, pipe, sort, values, where,
+} from "@ilokesto/queryable";
+
+const source = createQueryable<string | number>({ a: "one", b: 2, c: "three" });
+const strings = where((value: string | number) => typeof value === "string");
+const lengths = pipe(source, strings, map((value: string) => value.length));
+// Queryable<number>; callbacks can also receive the original key.
+const ordered = pipe(lengths, sort((a: number, b) => b - a), values);
+// number[]: [5, 3]
+
+// compose seeds the input type and builds a reusable left-to-right transform.
+const firstLength = compose<typeof source>()(strings, map((s: string) => s.length), limit(1), values);
+firstLength(source); // [3]
+firstLength(createQueryable({ other: "four" })); // [4]
+
+const live = pipe(source, lazy, strings);
+values(live); // ["one", "three"]
+source.a = "changed";
+values(live); // ["changed", "three"]; no memoization
+```
+
+`pipe(input, ...stages)` runs left to right. `compose<Input>()(...stages)` builds
+a reusable transform in the same left-to-right order. Its explicit input type
+seeds inference without a source instance, including record/sequence mode.
+Both accept **one to four typed unary stages**; there
+is no untyped overflow overload. Nest pipes or composed transforms for longer
+queries. This small fixed overload set bounds inference work rather than
+importing a large overload catalogue. Annotate reusable callback inputs when
+there is no source at the adapter creation site. Native unary functions can
+appear at any stage, including after a terminal produces an array or scalar.
+
+Unary terminals are `values`, `entries`, `toObject`, `count`, and `first`.
+Data-last `find(predicate)`, `some(predicate)`, and
+`reduce(reducer, initial)` are terminal stages too; `find` preserves guard
+narrowing. `reduce` passes the same explicit initial value on each invocation,
+so use an immutable reducer or create a fresh stage when the accumulator is
+mutable.
+
+These adapters do not add an engine, bound instance methods, shared cursors,
+or caching. Each invocation dispatches to the query it receives. Eager versus
+lazy callback timing, shallow opaque values, native record ordering, sequence
+order, buffering, short-circuiting, and exact thrown values are unchanged.
+Each lazy consumption starts fresh and sees the live source. Callbacks and
+explicit accumulator objects remain caller-owned.
+
 ### Async entry sources and Promise normalization
 
 `createAsyncQuerySequence(factory, options?)` is a separate, always-deferred

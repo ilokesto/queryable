@@ -50,6 +50,10 @@ import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.j
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export {
+  compose, count, entries, find, first, lazy, limit, map, pick, pipe,
+  reduce, some, sort, toObject, values, where,
+} from "./functional.js";
 export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
 export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 
