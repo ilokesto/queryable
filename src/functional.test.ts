@@ -6,6 +6,24 @@ import {
 } from "./index.js";
 import type { Queryable, QuerySequence } from "./index.js";
 
+it("predicate adapters: Boolean and literal false -> match core narrowing in every mode", () => {
+  const source = createQueryable<0 | false | "" | "yes" | null | undefined>({
+    a: 0, b: false, c: "", d: "yes", e: null, f: undefined,
+  });
+  const truthyRecord = pipe(source, where(Boolean));
+  const truthySequence = pipe(source, lazy, where(Boolean));
+  const emptyRecord = pipe(source, where(() => false));
+
+  expectTypeOf(truthyRecord).toEqualTypeOf<Queryable<"yes">>();
+  expectTypeOf(truthySequence).toEqualTypeOf<QuerySequence<"yes">>();
+  expectTypeOf(emptyRecord).toEqualTypeOf<Queryable<never>>();
+  expectTypeOf(pipe(source, find(Boolean))).toEqualTypeOf<"yes" | undefined>();
+  expectTypeOf(pipe(source, find(() => false))).toEqualTypeOf<undefined>();
+  expect(values(truthyRecord)).toEqual(["yes"]);
+  expect(values(truthySequence)).toEqual(["yes"]);
+  expect(values(emptyRecord)).toEqual([]);
+});
+
 it("adapters: record and sequence paths -> match direct keys, values, mode and traces", () => {
   const query = createQueryable({ 2: 2, 1: 1, a: 3, b: 4 });
   for (const source of [query, query[SORT]((a, b) => b - a), query[LAZY]()]) {

@@ -18,6 +18,11 @@ export const nativeResult = pipe(mapped, values, ns => ns.join(","), text => tex
 export const transform = compose<Queryable<string | number>>()(strings, map((value: string) => value.length), values);
 export const transformed = transform(source);
 export const found = pipe(source, find((value: string | number) => typeof value === "number"));
+const falsy = createQueryable<0 | false | "" | "yes" | null | undefined>({ a: 0, b: "yes" });
+export const truthy = pipe(falsy, where(Boolean));
+export const empty = pipe(falsy, where(() => false));
+export const truthyFound = pipe(falsy, find(Boolean));
+export const neverFound = pipe(falsy, find(() => false));
 
 check<Equal<typeof narrowed, Queryable<string>>>(true);
 check<Equal<typeof mapped, Queryable<number>>>(true);
@@ -26,6 +31,10 @@ check<Equal<typeof deferred, QuerySequence<string | number>>>(true);
 check<Equal<typeof nativeResult, boolean>>(true);
 check<Equal<typeof transformed, number[]>>(true);
 check<Equal<typeof found, number | undefined>>(true);
+check<Equal<typeof truthy, Queryable<"yes">>>(true);
+check<Equal<typeof empty, Queryable<never>>>(true);
+check<Equal<typeof truthyFound, "yes" | undefined>>(true);
+check<Equal<typeof neverFound, undefined>>(true);
 check<Equal<Parameters<typeof pipe>["length"], 5>>(true);
 check<Equal<Parameters<ReturnType<typeof compose<number>>>["length"], 4>>(true);
 

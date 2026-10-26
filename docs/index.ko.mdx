@@ -101,6 +101,303 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 
 [벤치마크 방법](../bench/README.md) · [실측 결과](../bench/RESULTS.md) · [저장소 안내](../README.ko.md)
 
+## Predicate narrowing과 속성별 그룹
+
+`WHERE(Boolean)`과 `FIND(Boolean)`은 값 타입에서 리터럴 `false`, `0`, `0n`, `""`, `null`, `undefined`를 제거합니다. 넓은 `number`, `bigint`, `string`은 그대로 유지합니다. TypeScript는 0·NaN이 아닌 모든 수나 비어 있지 않은 문자열을 완전히 표현하지 못합니다. 리터럴 `false`를 반환하는 콜백의 `WHERE` 결과는 빈 `Queryable<never>` 또는 `QuerySequence<never>`이며, `FIND`는 `undefined`를 반환합니다. 명시적·추론된 타입 가드의 narrowing과 일반 boolean 콜백의 원래 값 타입은 유지합니다. 즉시 평가 레코드·정렬 시퀀스·지연 시퀀스 모두 같은 타입 계약을 사용하며 실행 순서는 바뀌지 않습니다.
+
+```ts
+import { createQueryable, WHERE, FIND, VALUES, isDefined, isNonNullish, negate } from "@ilokesto/queryable";
+
+const mixed = createQueryable<0 | false | "" | "cat" | null | undefined>({
+  zero: 0, no: false, empty: "", cat: "cat", nil: null, missing: undefined,
+});
+mixed[WHERE](Boolean)[VALUES](); // ["cat"]; Queryable<"cat">
+mixed[WHERE](isDefined)[VALUES](); // [0, false, "", "cat", null]
+mixed[WHERE](isNonNullish)[VALUES](); // [0, false, "", "cat"]
+mixed[WHERE](negate(isNonNullish))[VALUES](); // [null, undefined]
+mixed[FIND](() => false); // undefined
+```
+
+`isDefined`는 `undefined`만, `isNonNullish`는 `null`과 `undefined`를 제외합니다. `negate(predicate)`는 모든 콜백 인자를 그대로 전달하고 결과를 반전합니다. 제공된 브랜드가 있는 `isDefined`·`isNonNullish`만 여집합 narrowing을 지원합니다. 임의 타입 가드를 부정하면 boolean predicate를 반환합니다. 양수만 고르는 number 가드는 음수도 거절하므로 부정 결과에서 모든 number를 제외하면 안전하지 않습니다. 헬퍼를 일반 콜백으로 감싸면 브랜드 기반 여집합 계약은 유지되지 않습니다.
+
+`GROUP_BY_PROP(property)`는 문자열 판별 속성의 그룹 키와 해당 값을 가질 수 있는 union member를 연결합니다. 콜백 기반 `GROUP_BY`와 달리 그룹마다 값 타입을 좁히며, 필수 판별 속성이나 빈 입력도 그룹 존재는 optional입니다.
+
+```ts
+import { createQueryable, GROUP_BY_PROP, VALUES } from "@ilokesto/queryable";
+
+type Pet = { readonly kind: "cat"; meow: true } | { readonly kind: "dog"; bark: true };
+const pets = createQueryable<Pet>({ alice: { kind: "cat", meow: true } });
+const groups = pets[GROUP_BY_PROP]("kind");
+groups.cat?.[VALUES](); // cat member만 포함, 원래 키 "alice" 유지
+groups.dog; // 여기서는 undefined; Queryable<dog member> | undefined
+```
+
+선택적 문자열 판별 속성과 속성 자체가 없는 union member도 지원합니다. 속성이 없거나 값이 `undefined`이면 그룹 이름으로 변환하지 않고 건너뜁니다. 그룹 값 타입은 원래의 optional·readonly 속성을 보수적으로 유지하며, 선택적 속성을 필수로 바꾸지 않습니다. 숫자 또는 문자열·숫자 혼합 판별 속성은 받지 않으며 암묵적 숫자 키 변환은 보장하지 않습니다. 런타임에서도 문자열 속성 값만 그룹을 만듭니다.
+
+`GROUP_BY`처럼 `GROUP_BY_PROP`는 미뤄 둔 지연 작업까지 호출 즉시 소비해 얕은 즉시 평가 스냅샷을 만듭니다. 순회 순서대로 각 멤버의 판별 속성을 한 번 읽고 원래 멤버 키와 레코드·시퀀스 모드를 유지합니다. 빈 문자열과 특수 문자열 키를 지원하며 그룹을 다시 소비해도 그룹화 작업을 반복하지 않습니다. 속성 getter 예외는 그대로 전파하고 중첩 값은 참조를 공유합니다.
+
+## selector 정렬과 명시적 선택
+
+```ts
+import {
+  createQueryable, SORT_BY, MIN_BY, MAX_BY, TOP_K, NTH_BY, RANK_BY, ENTRIES,
+} from "@ilokesto/queryable";
+
+const scores = createQueryable({
+  alice: { team: "a", score: 8 },
+  bob: { team: "a", score: 9 },
+  charlie: { team: "b", score: 9 },
+});
+scores[SORT_BY](
+  { select: user => user.team },
+  { select: user => user.score, direction: "desc" },
+)[ENTRIES](); // bob, alice, charlie
+scores[MIN_BY]({ select: user => user.score }); // alice 값
+scores[MAX_BY]({ select: user => user.score }); // bob 값: 첫 동점 유지
+scores[TOP_K](2, { select: user => user.score, direction: "desc" })[ENTRIES]();
+// [["bob", ...], ["charlie", ...]]
+scores[NTH_BY](-1, { select: user => user.score }); // charlie 값
+scores[RANK_BY]("charlie", { select: user => user.score }); // 2
+```
+
+모든 연산은 `select(value, key)`와 선택적 `direction: "asc" | "desc"`(기본 `"asc"`)를 가진 `OrderRule<T>`를 하나 이상 받습니다. 여러 규칙을 사전식으로 비교합니다. `OrderKey`는 `boolean | number | bigint | string | null | undefined`입니다. 오름차순 범주 순서는 **boolean, number, bigint, string, null, undefined**이며 범주 사이에 형 변환하지 않습니다. 범주 안에서는 `false < true`, number·bigint는 숫자 순서, string은 JavaScript UTF-16 사전식 순서(로케일 정렬 아님)입니다. `NaN`은 `Infinity`를 포함한 나머지 number 뒤에 오며 모든 NaN은 동점입니다. `-0`과 `0`도 동점입니다. 내림차순은 nullish 위치를 포함해 키 순서 전체를 뒤집지만, 모든 규칙이 동점이면 어느 방향이든 입력 순서를 유지합니다.
+
+`SORT_BY`와 `TOP_K`는 원래 키를 유지하는 `QuerySequence<T>`를 반환합니다. 숫자 키와 특수 키도 보존합니다. `SORT_BY`는 앞선 규칙이 순서를 결정해도 entry마다 모든 selector를 한 번씩 계산합니다. 키 캐시는 한 번의 소비 동안만 존재하며 지연 소비 간에는 공유하지 않습니다. 즉시 평가 호출은 바로 실행하고 지연 체인은 소비까지 미룬 뒤 현재 쿼리 레코드를 다시 읽고 selector를 다시 실행합니다. 즉시 평가 결과는 entry의 얕은 스냅샷입니다. 원본 레코드나 원본 entry 배열을 제자리 정렬하지 않으며 중첩 값 참조는 공유합니다. 예외는 기존 `SORT`와 같은 즉시/지연 경계에서 원래 객체 그대로 전파합니다. 기존 comparator `SORT`, 반복 `SORT`, `SORT` + `LIMIT`/`FIRST`를 자동 치환하지 않습니다.
+
+`MIN_BY`와 `MAX_BY`는 지연 체인에서도 호출 즉시 소비하는 terminal입니다. 단일 순회에서 최선 entry와 규칙 키만 유지하고 엄격히 개선될 때만 교체하므로 두 극값 모두 첫 동점 값을 반환합니다. 반환값은 entry가 아닌 **값**입니다. 빈 입력은 `undefined`이며 실제로 선택된 undefined 값과 구분되지 않습니다. 키의 존재·위치는 `RANK_BY`, 키와 값은 `TOP_K(...)[ENTRIES]()`로 확인하세요. 방향은 극값에도 적용되므로 내림차순 규칙의 최솟값은 자연 키가 가장 큰 값입니다.
+
+`TOP_K(k, ...rules)`는 최대 K개 후보를 bounded heap으로 유지한 뒤 승자들을 안정 정렬합니다. K가 N 이상이어도 정렬 순서를 보장합니다. K는 비음수 safe integer여야 합니다. `NaN`, 무한대, 소수, 음수, unsafe integer는 지연 소스를 소비하기 전 연산 호출 시 `RangeError`를 던집니다. `-0`은 0이며 K=0은 upstream과 selector를 읽지 않습니다. 양수 K는 뒤에 `FIRST`나 `LIMIT`이 있어도 첫 결과를 내기 전에 전체 upstream을 소비합니다.
+
+`NTH_BY(index, ...rules)`는 같은 정렬의 **0부터 시작하는 안정 ordinal 위치**에 있는 값을 반환합니다. 음수는 뒤에서 셉니다(`-1`은 마지막). 빈 입력·범위 밖은 `undefined`입니다. index는 safe integer여야 하며 잘못된 index는 소비 전에 `RangeError`를 던집니다. `RANK_BY(recordKey, ...rules)`는 해당 키의 0부터 시작하는 안정 ordinal을 반환하고 키가 없으면 `undefined`입니다. 동점도 입력 순서대로 연속된 서로 다른 순위를 받으며 competition/dense rank가 아닙니다. 둘 다 즉시 소비 terminal이며 호출마다 entry당 각 selector를 한 번만 계산합니다.
+
+N개 entry와 R개 규칙에서 `SORT_BY`는 정렬과 O(NR) 키 버퍼를 사용하고 극값은 O(R) 작업 공간을 사용합니다. `TOP_K`는 O(min(K,N)R) 키를 보관하며 비교 비용은 O(N log(min(K,N)) + min(K,N) log(min(K,N)))입니다. `NTH_BY`는 비음수 index에 최대 `index + 1`개, 음수에 최대 `abs(index)`개의 후보를 유지하는 반복형 heap을 사용하여 재귀 분할 문제가 없습니다. `RANK_BY`는 O(NR) 키 버퍼에서 대상 키를 찾고 앞선 후보 수를 세며 정렬하지 않습니다. 자동 최적화가 아닌 명시적 선택 연산입니다. [정렬 실측](../bench/ORDERING.md)에서 K/N·selector 비용과 메모리 trade-off를 확인하세요. 특정 속도 향상이나 heap 임계값을 보장하지 않습니다.
+
+## 분할, 중간 누적값과 부수 효과
+
+`PARTITION(predicate)`는 lazy 쿼리도 즉시 한 번 소비하여 독립적인 eager 얕은
+스냅샷 `[matching, nonmatching]`을 반환합니다. predicate는 쿼리 순서대로 각
+항목에 정확히 한 번 `(value, originalKey)`를 받습니다. 레코드는 객체의 기본
+키 순서, 시퀀스는 입력 순서를 유지합니다. 타입 가드는 matching 쪽만 좁힙니다.
+가드가 선언한 타입의 일부 값만 인식할 수도 있으므로 nonmatching은 `T`를
+유지합니다. 빈 쪽도 타입이 있는 쿼리입니다. 이후 원본의 항목 대입은 스냅샷에
+영향을 주지 않지만 참조형 값은 공유합니다.
+
+```ts
+import {
+  createQueryable, PARTITION, SCAN, TAP, EACH, THROUGH, LAZY, LIMIT, VALUES,
+} from "@ilokesto/queryable";
+
+const mixed = createQueryable<string | number>({ a: "one", b: 2 });
+const [strings, rest] = mixed[PARTITION](value => typeof value === "string");
+// Queryable<string>, Queryable<string | number>
+
+const totals = createQueryable({ a: 1, b: 2, c: 3 })[LAZY]()
+  [SCAN]((sum, value, key) => sum + value, () => 0)
+  [TAP]((value, key) => { console.info(key, value); });
+totals[LIMIT](2)[VALUES](); // [1, 3]; a, b의 effect만 실행
+totals[EACH]((value, key) => { console.info(key, value); }); // 전체를 다시 소비
+const firstTwo = totals[THROUGH](query => query[LIMIT](2)[VALUES]()); // number[]
+```
+
+`SCAN(reducer, seedFactory)`는 원본 키마다 누적값 하나를 내보내며
+레코드/시퀀스 모드를 유지합니다. seed 자체는 별도 항목으로 내보내지 않습니다.
+reducer의 인자는 `(accumulator, value, originalKey)`입니다. 필수인 인자 없는
+factory는 빈 소비를 포함하여 매 소비 시작 시 한 번 호출합니다. 소비하지 않은
+lazy 체인이나 후속 `LIMIT(0)`에서는 호출하지 않습니다. lazy 재소비를 독립적으로
+유지하려면 factory에서 새로운 mutable seed를 반환하세요.
+
+누적값을 **복제하지 않습니다**. reducer가 같은 객체를 변경하고 반환하면 과거
+출력도 그 객체를 참조하여 이후 변경을 관찰합니다. 독립적인 과거 값이 필요하면
+각 단계에서 새 객체를 반환하세요. 빈 입력은 아무것도 내보내지 않고 reducer도
+호출하지 않습니다.
+
+`TAP(effect)`는 원본 키와 값의 참조 동일성을 유지합니다. `SCAN`과 마찬가지로
+eager 쿼리에서는 즉시, lazy 쿼리에서는 수요에 따라 실행합니다. lazy 재소비마다
+현재 원본을 다시 읽고 계산하며 memoization하지 않습니다. 후속 `LIMIT`, `FIND`,
+`FIRST`, `SOME`은 소비를 일찍 종료할 수 있습니다. `EACH(effect)`는 순서대로
+소비하고 `void`를 반환하는 terminal이며 결과 배열을 만들지 않습니다. 두 effect는
+`(value, originalKey)`를 받고 `false`를 반환해도 중단하지 않습니다. 빈 입력에서는
+effect를 호출하지 않습니다.
+
+`THROUGH(fn)`는 소비 없이 정확히 같은 쿼리 객체로 `fn`을 즉시 한 번 호출하고
+반환 타입과 결과의 참조 동일성을 보존합니다. 다섯 메서드 모두 receiver가
+필요하고 공유된 동결 prototype을 사용하며 callback이 던진 값을 감싸거나
+바꾸지 않고 그대로 전파합니다.
+
+## 값 기준 중복 제거
+
+| 연산 | 결과 |
+| --- | --- |
+| `[DISTINCT]()` | 전체 입력에서 각 값의 첫 entry 유지 |
+| `[DISTINCT_BY]((value, key) => selected)` | 각 selector 결과의 첫 entry 유지 |
+| `[DISTINCT_UNTIL_CHANGED]()` | 인접한 동일 값 구간마다 첫 entry 유지 |
+| `[DISTINCT_UNTIL_CHANGED_BY]((value, key) => selected)` | 인접한 동일 selector 결과 구간마다 첫 entry 유지 |
+
+```ts
+import {
+  createQueryable, DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, ENTRIES,
+} from "@ilokesto/queryable";
+
+const numbers = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+numbers[DISTINCT]()[ENTRIES](); // [["a", 1], ["c", 2]]
+numbers[DISTINCT_UNTIL_CHANGED]()[ENTRIES](); // [["a", 1], ["c", 2], ["d", 1]]
+const users = createQueryable({
+  alice: { department: "design" },
+  bob: { department: "design" },
+  charlie: { department: "engineering" },
+});
+users[DISTINCT_BY](user => user.department)[ENTRIES]();
+// alice와 charlie의 원본 값과 키를 유지합니다.
+```
+
+동등성은 **SameValueZero**입니다. `NaN`끼리는 같고 `-0`과 `0`도 같습니다.
+`undefined`도 일반 값이므로 인접 구간의 첫 값일 때도 보존합니다.
+객체와 함수는 내부 필드를 검사하지 않고 참조 identity로 비교합니다.
+selector는 방문한 entry마다 원본 값과 키를 한 번 받습니다. 반환값은 동등성
+판단에만 사용하며 원본 값이나 키를 대체하지 않습니다. 사용자 comparator는
+제공하지 않습니다. 임의 동등성은 Set 조회 대신 이전 대표 값들과 후보를
+비교하는 추가 비용이 필요할 수 있습니다.
+
+레코드 **키**가 유일해도 **값**은 중복될 수 있습니다. `PICK`은 요청한 키의
+중복을 무시하지만 distinct 연산은 서로 다른 원본 키의 값이나 selector
+결과를 비교합니다. 항상 첫 entry가 남습니다. 레코드는 네이티브 객체 순서,
+정렬된 시퀀스는 순회 순서를 유지합니다. 원본 표현을 유지하며 입력은 변경하지
+않습니다.
+
+레코드와 즉시 평가 시퀀스는 호출 즉시 실행합니다. `LAZY` 이후 네 연산은
+소비 시 스트리밍하며 뒤의 조기 종료 연산을 지원합니다. 부분 소비나 예외 이후에도
+매 소비마다 상태를 새로 만듭니다. 전체 distinct는 선택된 고유 값 수만큼의
+Set 공간을 사용하고, 인접 distinct는 초기화 여부와 직전 선택 값만 보관하므로
+상수 공간을 사용합니다. 전체 entry 버퍼링이나 결과 메모이제이션은 하지 않습니다.
+지연 뷰는 live·repeatable 계약을 유지하며 selector 예외는 그대로 전파됩니다.
+다음 소비는 처음부터 다시 시작합니다.
+
+## 숫자 집계와 그룹별 집계
+
+아래 종단 메서드는 레코드, 즉시 평가 정렬 시퀀스, 지연 시퀀스에서 모두 동작합니다. 호출하면 남은 연산을 소스 순서대로 즉시 소비하며 콜백에는 원래 레코드 키를 전달합니다. 숨겨진 소스 캐시는 없습니다. 지연 쿼리를 다시 소비하면 콜백을 다시 실행하고 쿼리 레코드의 변경을 읽습니다.
+
+| 종단 메서드 | 결과 |
+| --- | --- |
+| `[SUM]((value, key) => number)` | `+0`부터 누적한 합; 빈 입력은 `0` |
+| `[AVERAGE]((value, key) => number)` | 합을 개수로 나눈 평균; 빈 입력은 `undefined` |
+| `[MIN]((value, key) => number)` | 최솟값; 빈 입력은 `undefined` |
+| `[MAX]((value, key) => number)` | 최댓값; 빈 입력은 `undefined` |
+| `[STATS]((value, key) => number)` | `NumericStats`: `{ count, sum, average, min, max }` |
+| `[COUNT_BY]((value, key) => K)` | 문자열 그룹별 개수인 `Partial<Record<K, number>>` |
+| `[REDUCE_BY](keyFn, initial, reducer)` | 문자열 그룹별 누적값인 `Partial<Record<K, A>>` |
+
+```ts
+import {
+  createQueryable, SUM, AVERAGE, MIN, MAX, STATS, COUNT_BY, REDUCE_BY,
+} from "@ilokesto/queryable";
+
+const sales = createQueryable({
+  alice: { team: "red", amount: 10 },
+  bob: { team: "blue", amount: 20 },
+  carol: { team: "red", amount: 30 },
+});
+sales[SUM](sale => sale.amount); // 60
+sales[AVERAGE](sale => sale.amount); // 20
+sales[MIN](sale => sale.amount); // 10
+sales[MAX](sale => sale.amount); // 30
+sales[STATS](sale => sale.amount);
+// { count: 3, sum: 60, average: 20, min: 10, max: 30 }
+sales[COUNT_BY](sale => sale.team); // { red: 2, blue: 1 }
+
+const totals = sales[REDUCE_BY](
+  sale => sale.team === "red" ? "red" : "blue",
+  _groupKey => ({ total: 0, members: [] as string[] }),
+  (acc, sale, key) => {
+    acc.total += sale.amount;
+    acc.members.push(key);
+    return acc;
+  },
+);
+// Partial<Record<"red" | "blue", { total: number; members: string[] }>>
+totals.red?.total; // 40
+```
+
+숫자 selector는 필수이며 반환 타입은 `number`만 받습니다. `bigint` 합계는 bigint 쿼리에서 `query[REDUCE]((total, value) => total + value, 0n)`처럼 직접 누적하세요. `STATS`는 한 번 순회하면서 항목마다 selector를 정확히 한 번 호출하여 다섯 필드를 함께 계산합니다. 소스를 필드마다 다시 소비하지 않습니다. 개별 숫자 종단 메서드도 항목마다 selector를 한 번 호출합니다. 빈 `STATS` 결과는 `{ count: 0, sum: 0, average: undefined, min: undefined, max: undefined }`입니다.
+
+숫자를 거르거나 강제 변환하지 않고 JavaScript 연산을 따릅니다. 합은 `+0`부터 왼쪽 순서대로 `+`로 누적하며 평균은 합을 개수로 나눕니다. 최솟값·최댓값은 `Math.min`·`Math.max` 규칙을 따릅니다. `NaN`은 숫자 결과에 전파되지만 개수에는 포함됩니다. 무한대와 오버플로는 그대로 유지하고, 부호가 반대인 무한대를 더하면 `NaN`이 됩니다. 부동소수점 반올림 결과는 소스 순서에 따릅니다. `-0`만 있는 합과 평균은 `+0`이며, 최솟값·최댓값은 단독 `-0`을 유지합니다. 두 부호의 0이 섞이면 최솟값은 `-0`, 최댓값은 `+0`입니다. `NaN`을 만나도 콜백이 예외를 던지지 않는 한 남은 항목과 selector를 모두 실행합니다.
+
+`REDUCE_BY`는 `keyFn(value, key)`, **초기 누적값 팩토리** `initial(groupKey)`, `reducer(accumulator, value, key)` 순서로 인자를 받습니다. 팩토리를 먼저 받아 reducer의 누적값 타입을 추론합니다. 각 항목에서 그룹 키를 구한 뒤 그 그룹의 첫 항목이면 팩토리를 실행하고 reducer를 호출합니다. 첫 항목도 reducer에 전달합니다. 팩토리는 종단 호출마다 실제 등장한 그룹당 한 번만 실행하며, 없는 그룹이나 빈 입력에서는 실행하지 않습니다. 그룹마다 별도 변경 가능한 상태가 필요하면 팩토리에서 새 객체를 반환하세요. reducer의 반환값이 해당 그룹의 다음 누적값이며 `undefined`, `null`, `false`, `0`, `""`도 보존합니다. 저장된 `undefined`를 초기화되지 않은 그룹으로 취급하지 않습니다.
+
+두 그룹별 종단 메서드는 그룹 전체를 저장하지 않고 직접 누적합니다. 결과 객체의 프로토타입은 null이므로 `""`, `__proto__`, `constructor`, `toString`도 안전한 문자열 그룹 키입니다. 키 리터럴 유니온을 추론하지만 그룹이 없을 수 있으므로 각 속성은 optional입니다. 없는 그룹과 `undefined` 누적값을 가진 그룹은 `Object.hasOwn(result, key)`로 구분하세요. 결과 속성의 열거 순서는 정수형 키를 포함한 네이티브 객체 순서를 따르며, 그룹 내부 reducer는 안정적인 소스 순서대로 호출됩니다. 앞선 연산, selector, 팩토리, reducer의 예외는 즉시 전파됩니다. 지연 쿼리를 다시 소비하면 처음부터 순회하고 누적값도 새로 만듭니다.
+
+`GROUP_BY`는 계속 그룹 전체를 즉시 계산한 스냅샷으로 만들어 후속 쿼리를 지원합니다. 그룹 내용이 필요하면 `GROUP_BY`, 그룹별 개수나 누적값만 필요하면 `COUNT_BY`·`REDUCE_BY`를 사용하세요.
+
+## 조회와 기본값
+
+다음 종단 메서드는 레코드, 정렬 시퀀스, 지연 뷰에서 같은 함수를 공유하며 쿼리 순서를 따릅니다.
+
+| 연산 | 결과 |
+| --- | --- |
+| `[LAST]()` | 마지막 값. 비어 있으면 `undefined` |
+| `[AT](index)` | 0부터 시작하는 위치의 값. 음수는 뒤에서부터 계산 |
+| `[SINGLE](predicate?)` | 유일한 일치 값. 일치 항목이 없으면 `undefined`, 두 번째 일치 항목에서 `RangeError` |
+| `[EVERY](predicate)` | 모든 값의 조건 만족 여부. 비어 있으면 `true` |
+| `[IS_EMPTY]()` | 항목이 없는지 여부 |
+| `[INCLUDES](value)` | SameValueZero로 값의 존재 여부 검사 (`NaN`끼리, `0`과 `-0`은 일치하며 객체는 참조 비교) |
+| `[FIND_ENTRY](predicate)` | 첫 일치 항목의 새 `[key, value]` 튜플. 없으면 `undefined` |
+| `[FIRST_OR](value)` | 첫 값. 비어 있을 때만 전달한 기본값 사용 |
+| `[FIRST_OR_ELSE](factory)` | 첫 값. 비어 있을 때만 인자 없는 팩터리를 정확히 한 번 호출 |
+
+조건 함수는 `(value, key)`를 받습니다. 조건 없는 `SINGLE`은 모든 항목을 세며, 조건이 있으면 일치 항목만 셉니다. 저장된 `undefined`도 일치 항목이므로 두 번째 항목이 있으면 예외가 발생합니다. `SINGLE`과 `FIND_ENTRY`는 타입 가드의 좁히기를 보존합니다. 반환 튜플은 새 컨테이너이고 값의 참조는 공유합니다.
+
+`AT`는 `Array.at`의 숫자 변환을 따릅니다. 소수는 0 방향으로 절삭하고 `NaN`과 양수·음수 0은 첫 항목을 선택합니다. 양수·음수 무한대는 순회하거나 지연 콜백을 실행하지 않고 `undefined`를 반환합니다. 숫자 변환 오류는 순회 전에 그대로 전파합니다. 유한한 0 이상 인덱스는 해당 항목에서 멈추며 범위를 벗어나면 끝까지 순회합니다. 유한한 음수 인덱스는 전체를 소비하고 최대 `min(항목 수, abs(절삭한 인덱스))`개의 값을 버퍼링합니다. `LAST`도 전체를 소비합니다. `SINGLE`은 끝 또는 두 번째 일치 항목까지 소비하며 나머지 조회는 결과를 결정하는 즉시 멈춥니다. 지연 뷰를 다시 조회하면 대기 중인 작업도 다시 실행합니다.
+
+항목 존재 여부를 truthiness나 값이 `undefined`인지로 판단하지 않습니다. 기존 `FIRST`와 `FIND`는 부재와 저장된 `undefined`를 모두 `undefined`로 반환하지만 기본값 조회는 항목의 존재를 구분하여 저장된 `0`, `false`, `undefined`를 유지합니다. 조건 함수와 팩터리의 오류는 변경 없이 전파합니다.
+
+```ts
+import {
+  createQueryable, AT, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, SINGLE,
+} from "@ilokesto/queryable";
+
+const query = createQueryable<number | string | undefined>({ a: undefined, b: 0, c: "three" });
+query[FIRST_OR](99); // undefined: "a" 항목이 존재함
+query[FIRST_OR_ELSE](() => 99); // undefined: 팩터리를 호출하지 않음
+query[AT](-1); // "three"
+query[SINGLE]((value): value is string => typeof value === "string"); // string | undefined
+query[FIND_ENTRY]((value): value is string => typeof value === "string"); // [string, string] | undefined
+```
+
+## 범위와 접두 구간
+
+다음 공유 Symbol 연산은 원래 키와 쿼리 모드를 유지합니다. 레코드는 레코드, 정렬·지연 시퀀스는 시퀀스를 반환합니다. 즉시 평가 쿼리에서는 호출 즉시 실행하며 지연 쿼리에서는 소비 시점까지 미룹니다.
+
+| 연산 | 결과 |
+| --- | --- |
+| `[SKIP](n)` | 앞의 `n`개 제외 |
+| `[TAKE_WHILE]((value, key) => boolean)` | 처음 불일치하기 전까지 일치하는 접두 구간 유지 |
+| `[DROP_WHILE]((value, key) => boolean)` | 일치하는 접두 구간 제외; 첫 불일치 항목은 유지 |
+| `[TAKE_LAST](n)` | 마지막 `n`개를 입력 순서대로 유지 |
+| `[DROP_LAST](n)` | 마지막 `n`개를 제외하고 입력 순서 유지 |
+
+세 숫자 연산의 크기 정규화는 같습니다. 소수는 0 방향으로 절삭하고, 음수(`-Infinity` 포함)와 `NaN`은 0으로 바꾸며 `Infinity`는 유지합니다. 따라서 `SKIP(0)`과 `DROP_LAST(0)`은 전체를 유지하고, `TAKE_LAST(0)`은 원본을 읽지 않고 빈 결과를 냅니다. 기존 `LIMIT`의 부호 있는 `slice(0, n)` 계약은 바꾸지 않습니다.
+
+```ts
+import {
+  createQueryable, LAZY, SKIP, LIMIT, TAKE_WHILE, DROP_WHILE,
+  TAKE_LAST, DROP_LAST, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 2, c: 3, d: 2 });
+query[LAZY]()[SKIP](1)[LIMIT](2)[VALUES](); // [2, 3]
+query[TAKE_WHILE](n => n < 3)[VALUES](); // [1, 2]
+query[DROP_WHILE](n => n < 3)[VALUES](); // [3, 2]
+query[TAKE_LAST](2)[VALUES](); // [3, 2]
+query[DROP_LAST](2)[VALUES](); // [1, 2]
+```
+
+비음수 범위는 `SKIP(start)[LIMIT](length)`로 표현하며 별도의 `SLICE` 연산은 제공하지 않습니다. 레코드의 정수형 키에는 객체 열거 규칙이 적용되고 시퀀스는 앞선 순서를 유지합니다. 저장된 `undefined`와 특수 키도 그대로 보존합니다.
+
+`TAKE_WHILE`은 첫 불일치에서 종료하며 타입 가드를 지원합니다. `DROP_WHILE`은 첫 불일치 이후 predicate를 더 호출하지 않습니다. 이후 값 전체를 거르는 연산이 아니므로 값 타입을 좁히지 않습니다. 두 predicate 모두 원래 키를 받습니다.
+
+지연 쿼리의 `SKIP(n)[FIRST]()`는 최대 `n + 1`개를 읽고, `TAKE_WHILE(predicate)[LIMIT](k)`는 필요한 접두 구간까지만 읽어 다음 항목을 검사하지 않습니다. `TAKE_LAST(n)`은 전체 입력을 읽은 뒤 결과를 내며 유한한 크기에는 최대 `n`개를 링 버퍼에 저장합니다. `DROP_LAST(n)`은 최대 `n`개를 저장하고 첫 출력을 위해 `n + 1`개를 읽습니다. 이후 조기 종료하는 터미널은 남은 순회를 멈출 수 있습니다. 정렬, 시퀀스 `PICK`, 음수 `LIMIT`의 버퍼링 장벽을 건너뛰지 않습니다.
+
+`SKIP(Infinity)`와 `DROP_LAST(Infinity)`는 전체를 소비하고 빈 결과를 냅니다. 후자는 항목을 저장하지 않습니다. `TAKE_LAST(Infinity)`는 전체 입력을 소비·저장한 뒤 모두 반환합니다. 소비할 때마다 카운터, predicate 상태, 버퍼를 새로 만듭니다. 조기 종료나 예외 이후에도 같으며, 지연 콜백과 예외는 소비 시점에 실행되고 소비 사이의 변경은 다음 순회에 반영됩니다.
+
 ## Iterable 원본과 키 identity
 
 `createQuerySequence(factory, options?)`는
@@ -148,6 +445,7 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 ## 함수형 조합
 
 소문자 adapter는 receiver를 유지하며 기존 Symbol 메서드를 호출합니다.
+`where`와 `find`도 핵심 메서드의 Boolean·리터럴 false narrowing overload를 유지합니다.
 `where(predicate)`, `map(mapper)`, `limit(n)`, `pick(...keys)`,
 `sort(comparator)`는 데이터를 나중에 받는 unary stage이며 `lazy` 자체도
 unary stage입니다. `where`는 타입 가드로 값을 좁히고 `map`은 값 타입을
@@ -197,3 +495,104 @@ values(live); // ["changed", "three"]; 메모이제이션 없음
 얕은 참조, 네이티브 레코드 순서, 시퀀스 순서, 버퍼링, 조기 종료, 던진 값
 자체는 기존과 같습니다. 지연 소비는 매번 처음부터 실행하여 live 원본을 읽으며,
 콜백과 명시적 누산기 객체는 호출자가 소유합니다.
+
+### Async entry 원본과 Promise 정규화
+
+`createAsyncQuerySequence(factory, options?)`는 항상 지연 실행하는 별도
+`AsyncQuerySequence<Awaited<T>>`입니다. `AsyncEntrySourceFactory<T>`는
+`Iterable<readonly [string, T]>`, `AsyncIterable<readonly [string, T]>`,
+또는 둘 중 하나를 감싼 PromiseLike를 반환합니다. 생성과 체인 연산은 원본을
+획득하지 않습니다. 소비할 때마다 factory를 다시 호출하므로 새 iterator나
+반복 가능한 iterable을 반환하세요. `LAZY`도 live·repeatable·nonmemoized입니다.
+
+```ts
+import {
+  createAsyncQuerySequence, iterateAsyncEntries, MAP, WHERE, LIMIT, VALUES, GROUP_BY,
+} from "@ilokesto/queryable";
+
+const rows = new Map([["2", Promise.resolve(20)], ["1", Promise.resolve(10)]]);
+const query = createAsyncQuerySequence(() => rows.entries())
+  [MAP](async (value, key) => ({ key, doubled: value * 2 }))
+  [WHERE](async value => value.doubled >= 20);
+const values = await query[LIMIT](1)[VALUES](); // [{ key: "2", doubled: 40 }]
+for await (const [key, value] of iterateAsyncEntries(query)) {
+  // 명시적 entry 뷰이며 break는 upstream을 닫음
+}
+const groups = await query[GROUP_BY](async value => value.doubled > 20 ? "high" : "low");
+const high = await groups.high?.[VALUES]();
+```
+
+- 원본 값과 `MAP` 결과는 중첩 PromiseLike까지 의도적으로 await합니다.
+  plain·Promise·mixed·`never`·`undefined` 타입은 `Awaited`로 추론합니다.
+  Promise를 opaque 값으로 보관하지 않으므로 값의 `then` 속성을 읽을 수 있고,
+  rejection은 전파합니다. 일반 값 객체 안의 속성을 재귀 순회하지는 않습니다.
+  기존 동기 쿼리는 계속 Promise와 다른 값을 그대로 저장합니다.
+- `MAP`, `WHERE`, `FIND`, `SOME`, `GROUP_BY` 콜백은 원본 순서대로
+  `(awaitedValue, originalKey)`를 받습니다. predicate와 grouping 콜백도
+  PromiseLike 결과를 반환할 수 있습니다. 콜백이 끝나야 다음 entry를 요청하며
+  동시 실행이나 prefetch는 없습니다. 동기 타입 가드는 `WHERE`/`FIND`를 좁히지만
+  async boolean predicate는 타입을 좁히지 않습니다.
+- `COUNT`, `FIRST`, `VALUES`, `ENTRIES`, `FIND`, `SOME`은 명시적으로
+  Promise를 반환합니다. 빈 결과는 각각 `0`, `undefined`, 새 빈 배열,
+  새 빈 배열, `undefined`, `false`이며 콜백을 호출하지 않습니다.
+  저장된 `undefined`는 여전히 하나의 entry입니다.
+- `iterateAsyncEntries(query)`와 `iterateAsyncValues(query)`는 독립 커서와
+  새 entry 튜플을 가진 명시적·반복 가능한 async iterable 뷰입니다. 쿼리 자체에는
+  기본 iterator가 없습니다. 기존 Symbol을 쓰는 메서드를 하나의 동결된 async
+  prototype에서 공유하며, 동기 prototype과는 분리합니다.
+- `SORT`는 소비할 때 전체를 버퍼링하고 동기
+  `(leftValue, rightValue) => number` comparator를 받습니다. 동점은 안정적으로
+  유지하며 숫자·특수 키도 시퀀스 순서를 보존합니다. `LIMIT`은 유한 음수의
+  버퍼링과 빈 limit의 원본 미획득을 포함해 `slice(0, n)` 의미를 유지합니다.
+  `FIRST`, `FIND`, `SOME`, 양수 `LIMIT`은 조기 종료할 수 있습니다.
+- `GROUP_BY`는 반환된 Promise를 await할 때가 아니라 호출할 때 소비를 시작합니다.
+  await 완료 시 모든 grouping 콜백이 끝나며
+  `Partial<Record<K, AsyncQuerySequence<T>>>` 스냅샷 그룹을 반환합니다.
+  그룹을 다시 소비해도 원본이나 grouping 콜백을 다시 실행하지 않습니다.
+  각 그룹 entry는 입력 순서를 유지합니다. null-prototype 그룹 레코드는 네이티브
+  객체 키 순서를 따르며 `__proto__`/`constructor`도 안전하게 지원합니다.
+  그룹에 추가하는 변환은 지연 async 연산입니다.
+- `duplicateKeys: "error" | "first" | "last"`는 동기 factory와 같은 identity
+  규칙 및 `DuplicateKeyError`를 사용합니다. `"first"`에서 나중에 버리는 중복도
+  포함하여 실제 읽은 값은 모두 await합니다. `"last"`는 출력 전 전체를 버퍼링하고
+  각 키의 첫 위치에 마지막 값을 둡니다. identity 상태는 매 소비마다 새로 만들고,
+  prefix 소비는 실제 읽은 entry만 검사합니다.
+- source protocol은 `next()` rejection, 값·콜백 rejection, 조기 종료 시
+  획득했으나 소진하지 않은 iterator를 정확히 한 번 닫고, `return()` 완료까지
+  기다린 뒤 결과를 확정합니다. 자연 소진에는 `return()`을 호출하지 않습니다.
+  기존 실패가 있으면 cleanup도 실패하더라도 원래 실패 identity를 유지하고,
+  기존 실패가 없으면 cleanup 실패로 terminal 또는 뷰를 reject합니다.
+  factory 실패도 소비를 reject하며 다음 소비는 새 factory 호출로 시작합니다.
+  자원을 해제하려면 원본에 `return()`을 구현해야 합니다. 취소·finalization hook·
+  동시 실행·retry·event는 이번 async 기반에 포함하지 않습니다.
+
+## 네이티브 컬렉션 출력과 Map 키 그룹
+
+`KEYS()`는 쿼리 순서의 새로운 문자열 배열을, `TO_MAP()`은 원래 키와 얕은 값을
+가진 새로운 `Map<string, T>`를 반환합니다. 저장된 `undefined`도 보존합니다.
+`TO_SET()`은 첫 출현 순서와 네이티브 SameValueZero 동등성을 사용합니다.
+`NaN`끼리, `-0`과 `0`은 같고 객체는 참조가 같아야 합니다. 모두 terminal이므로
+지연 작업은 호출마다 다시 실행됩니다. 반환 컬렉션을 수정해도 원본은 바뀌지 않습니다.
+
+`GROUP_BY_MAP((value, originalKey) => groupKey)`는 객체·Symbol·숫자·`undefined`
+등 임의의 Map 키를 받습니다. entry마다 selector를 한 번 호출하며 지연 입력도
+즉시 소비하여 독립 그룹을 만듭니다. Map의 그룹 순서는 각 키의 첫 출현 순서이고
+그룹 멤버는 원래 키와 입력 순서를 유지합니다. 레코드 그룹은 네이티브 객체 순서,
+정렬·지연 그룹은 시퀀스 순서를 따릅니다. 값은 계속 얕은 참조입니다.
+
+```ts
+import { createQueryable, GROUP_BY_MAP, KEYS, TO_MAP, TO_SET } from "@ilokesto/queryable";
+
+const team = {};
+const users = createQueryable({ alice: { team }, bob: { team } });
+const groups = users[GROUP_BY_MAP](user => user.team);
+groups.get(team)?.[KEYS](); // ["alice", "bob"]
+users[TO_MAP]().get("alice"); // { team }
+users[TO_SET]().size; // 2: 서로 다른 사용자 객체
+```
+
+그룹 키를 문자열이나 레코드 키로 바꾸지 않습니다. 반환 Map은 쿼리가 아니며
+JSON·객체로 자동 변환하지 않으므로 직렬화 표현을 직접 선택해야 합니다.
+기존 문자열 키 `GROUP_BY`는 유지합니다. 빈 입력은 새로운 빈 컬렉션을 반환하고,
+factory 원본의 중복 키 정책은 연산 전에 적용되므로 기본 `TO_MAP`은 중복을
+조용히 덮어쓰는 대신 오류를 냅니다.

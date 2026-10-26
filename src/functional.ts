@@ -2,7 +2,7 @@ import {
   COUNT, ENTRIES, FIND, FIRST, LAZY, LIMIT, MAP, PICK, REDUCE,
   SOME, SORT, TO_OBJECT, VALUES, WHERE,
 } from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+import type { Queryable, QuerySequence, Truthy } from "./index.js";
 
 type Mapped<Q, U> = Q extends Queryable<unknown> ? Queryable<U> : QuerySequence<U>;
 type Value<Q> = Q extends QuerySequence<infer T> ? T : never;
@@ -12,6 +12,8 @@ interface Transform<T, U> {
 }
 
 /** Data-last WHERE; type guards narrow values while retaining the query mode. */
+export function where(predicate: BooleanConstructor): <Q extends QuerySequence<unknown>>(query: Q) => Mapped<Q, Truthy<Value<Q>>>;
+export function where<T>(predicate: (value: T, key: string) => false): Transform<T, never>;
 export function where<T, S extends T>(predicate: (value: T, key: string) => value is S): Transform<T, S>;
 export function where<T>(predicate: (value: T, key: string) => boolean): Transform<T, T>;
 export function where<T>(predicate: (value: T, key: string) => boolean): Transform<T, T> {
@@ -80,6 +82,8 @@ export function first<T>(query: QuerySequence<T>): T | undefined {
   return query[FIRST]();
 }
 
+export function find(predicate: BooleanConstructor): <T>(query: QuerySequence<T>) => Truthy<T> | undefined;
+export function find<T>(predicate: (value: T, key: string) => false): (query: QuerySequence<T>) => undefined;
 export function find<T, S extends T>(predicate: (value: T, key: string) => value is S): (query: QuerySequence<T>) => S | undefined;
 export function find<T>(predicate: (value: T, key: string) => boolean): (query: QuerySequence<T>) => T | undefined;
 export function find<T>(predicate: (value: T, key: string) => boolean) {
