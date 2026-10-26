@@ -101,6 +101,61 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 
 [벤치마크 방법](../bench/README.md) · [실측 결과](../bench/RESULTS.md) · [저장소 안내](../README.ko.md)
 
+## 숫자 집계와 그룹별 집계
+
+아래 종단 메서드는 레코드, 즉시 평가 정렬 시퀀스, 지연 시퀀스에서 모두 동작합니다. 호출하면 남은 연산을 소스 순서대로 즉시 소비하며 콜백에는 원래 레코드 키를 전달합니다. 숨겨진 소스 캐시는 없습니다. 지연 쿼리를 다시 소비하면 콜백을 다시 실행하고 쿼리 레코드의 변경을 읽습니다.
+
+| 종단 메서드 | 결과 |
+| --- | --- |
+| `[SUM]((value, key) => number)` | `+0`부터 누적한 합; 빈 입력은 `0` |
+| `[AVERAGE]((value, key) => number)` | 합을 개수로 나눈 평균; 빈 입력은 `undefined` |
+| `[MIN]((value, key) => number)` | 최솟값; 빈 입력은 `undefined` |
+| `[MAX]((value, key) => number)` | 최댓값; 빈 입력은 `undefined` |
+| `[STATS]((value, key) => number)` | `NumericStats`: `{ count, sum, average, min, max }` |
+| `[COUNT_BY]((value, key) => K)` | 문자열 그룹별 개수인 `Partial<Record<K, number>>` |
+| `[REDUCE_BY](keyFn, initial, reducer)` | 문자열 그룹별 누적값인 `Partial<Record<K, A>>` |
+
+```ts
+import {
+  createQueryable, SUM, AVERAGE, MIN, MAX, STATS, COUNT_BY, REDUCE_BY,
+} from "@ilokesto/queryable";
+
+const sales = createQueryable({
+  alice: { team: "red", amount: 10 },
+  bob: { team: "blue", amount: 20 },
+  carol: { team: "red", amount: 30 },
+});
+sales[SUM](sale => sale.amount); // 60
+sales[AVERAGE](sale => sale.amount); // 20
+sales[MIN](sale => sale.amount); // 10
+sales[MAX](sale => sale.amount); // 30
+sales[STATS](sale => sale.amount);
+// { count: 3, sum: 60, average: 20, min: 10, max: 30 }
+sales[COUNT_BY](sale => sale.team); // { red: 2, blue: 1 }
+
+const totals = sales[REDUCE_BY](
+  sale => sale.team === "red" ? "red" : "blue",
+  _groupKey => ({ total: 0, members: [] as string[] }),
+  (acc, sale, key) => {
+    acc.total += sale.amount;
+    acc.members.push(key);
+    return acc;
+  },
+);
+// Partial<Record<"red" | "blue", { total: number; members: string[] }>>
+totals.red?.total; // 40
+```
+
+숫자 selector는 필수이며 반환 타입은 `number`만 받습니다. `bigint` 합계는 bigint 쿼리에서 `query[REDUCE]((total, value) => total + value, 0n)`처럼 직접 누적하세요. `STATS`는 한 번 순회하면서 항목마다 selector를 정확히 한 번 호출하여 다섯 필드를 함께 계산합니다. 소스를 필드마다 다시 소비하지 않습니다. 개별 숫자 종단 메서드도 항목마다 selector를 한 번 호출합니다. 빈 `STATS` 결과는 `{ count: 0, sum: 0, average: undefined, min: undefined, max: undefined }`입니다.
+
+숫자를 거르거나 강제 변환하지 않고 JavaScript 연산을 따릅니다. 합은 `+0`부터 왼쪽 순서대로 `+`로 누적하며 평균은 합을 개수로 나눕니다. 최솟값·최댓값은 `Math.min`·`Math.max` 규칙을 따릅니다. `NaN`은 숫자 결과에 전파되지만 개수에는 포함됩니다. 무한대와 오버플로는 그대로 유지하고, 부호가 반대인 무한대를 더하면 `NaN`이 됩니다. 부동소수점 반올림 결과는 소스 순서에 따릅니다. `-0`만 있는 합과 평균은 `+0`이며, 최솟값·최댓값은 단독 `-0`을 유지합니다. 두 부호의 0이 섞이면 최솟값은 `-0`, 최댓값은 `+0`입니다. `NaN`을 만나도 콜백이 예외를 던지지 않는 한 남은 항목과 selector를 모두 실행합니다.
+
+`REDUCE_BY`는 `keyFn(value, key)`, **초기 누적값 팩토리** `initial(groupKey)`, `reducer(accumulator, value, key)` 순서로 인자를 받습니다. 팩토리를 먼저 받아 reducer의 누적값 타입을 추론합니다. 각 항목에서 그룹 키를 구한 뒤 그 그룹의 첫 항목이면 팩토리를 실행하고 reducer를 호출합니다. 첫 항목도 reducer에 전달합니다. 팩토리는 종단 호출마다 실제 등장한 그룹당 한 번만 실행하며, 없는 그룹이나 빈 입력에서는 실행하지 않습니다. 그룹마다 별도 변경 가능한 상태가 필요하면 팩토리에서 새 객체를 반환하세요. reducer의 반환값이 해당 그룹의 다음 누적값이며 `undefined`, `null`, `false`, `0`, `""`도 보존합니다. 저장된 `undefined`를 초기화되지 않은 그룹으로 취급하지 않습니다.
+
+두 그룹별 종단 메서드는 그룹 전체를 저장하지 않고 직접 누적합니다. 결과 객체의 프로토타입은 null이므로 `""`, `__proto__`, `constructor`, `toString`도 안전한 문자열 그룹 키입니다. 키 리터럴 유니온을 추론하지만 그룹이 없을 수 있으므로 각 속성은 optional입니다. 없는 그룹과 `undefined` 누적값을 가진 그룹은 `Object.hasOwn(result, key)`로 구분하세요. 결과 속성의 열거 순서는 정수형 키를 포함한 네이티브 객체 순서를 따르며, 그룹 내부 reducer는 안정적인 소스 순서대로 호출됩니다. 앞선 연산, selector, 팩토리, reducer의 예외는 즉시 전파됩니다. 지연 쿼리를 다시 소비하면 처음부터 순회하고 누적값도 새로 만듭니다.
+
+`GROUP_BY`는 계속 그룹 전체를 즉시 계산한 스냅샷으로 만들어 후속 쿼리를 지원합니다. 그룹 내용이 필요하면 `GROUP_BY`, 그룹별 개수나 누적값만 필요하면 `COUNT_BY`·`REDUCE_BY`를 사용하세요.
+
 ## 조회와 기본값
 
 다음 종단 메서드는 레코드, 정렬 시퀀스, 지연 뷰에서 같은 함수를 공유하며 쿼리 순서를 따릅니다.
