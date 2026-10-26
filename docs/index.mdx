@@ -30,16 +30,16 @@ The table maps intent, not drop-in signatures. Remeda names refer to the reposit
 
 | Intent | Native JavaScript | Remeda | LINQ to Objects | Queryable migration |
 | --- | --- | --- | --- | --- |
-| Filter values | array.filter(predicate) | filter | Where | WHERE or where; callbacks receive value and original string key, not array index |
+| Filter values | `array.filter(predicate)` | `filter` | `Where` | `WHERE` or `where`; callbacks receive value and original string key, not array index |
 | Project fields within each value | `array.map(user => ({ name: user.name }))` | `map` / `mapValues` | `Select` | `MAP(user => ({ name: user.name }))`; never `PICK` |
-| Select record keys | Object.fromEntries(selectedEntries) | pick(record, keys) | Filter key/value pairs by key | PICK(...keys) selects whole stored values, ignores absent/duplicate keys, retains stored undefined |
-| Sort then take a prefix | array.toSorted(compare).slice(0, n) | sort / take | OrderBy / Take | SORT(compare)[LIMIT](n) returns a sequence; ENTRIES / VALUES retain comparator order |
+| Select record keys | `Object.fromEntries(selectedEntries)` | `pick(record, keys)` | Filter key/value pairs by key | `PICK(...keys)` selects whole stored values, ignores absent/duplicate keys, retains stored `undefined` |
+| Sort then take a prefix | `array.toSorted(compare).slice(0, n)` | `sort` / `take` | `OrderBy` / `Take` | `SORT(compare)[LIMIT](n)` returns a sequence; `ENTRIES` / `VALUES` retain comparator order |
 | Compose operations | Nested calls or functions | pipe | Extension-method chain | Symbol methods or imported pipe, where, map, values; lower-case adapters keep the same execution contracts |
 | Defer and repeat | A fresh generator per traversal | Explicit pipeline evaluation | Deferred enumerable | Explicit LAZY on sync queries; live, repeatable, nonmemoized, not a cached result |
 | Group and materialize | Object.groupBy / arrays | groupBy | GroupBy / ToArray | GROUP_BY executes immediately, including pending lazy work, and returns snapshot groups |
 | Await values and release resources | for await with try/finally and AbortSignal | Do not infer async ownership from a sync pipe | Async enumeration is a separate contract from IEnumerable | createAsyncQuerySequence awaits source values and MAP results sequentially; terminals return Promises; factory and external work own their resources |
 
-Record keys retain native object order: integer-index keys enumerate before other strings even if requested later. SORT changes representation to an ordered sequence; TO_OBJECT restores native object ordering. Filtering and mapping preserve original keys, including special keys such as __proto__ and constructor. The removed SELECT name becomes PICK only for record-key selection; LINQ Select instead maps to MAP.
+Record keys retain native object order: integer-index keys enumerate before other strings even if requested later. `SORT` changes representation to an ordered sequence; `TO_OBJECT` restores native object ordering. Filtering and mapping preserve original keys, including special keys such as `__proto__` and `constructor`. The removed `SELECT` name becomes `PICK` only for record-key selection; LINQ `Select` instead maps to `MAP`.
 
 LAZY reads the constructed query record on each consumption, not the original input object (construction already shallow-copied it). Callbacks run again on each terminal and observe between-consumption record mutations. Add LAZY before expensive work: adding it after an eager sort cannot undo that sort. SORT, sequence PICK, and finite negative LIMIT buffer the entire upstream at consumption; a later LIMIT(1) cannot bypass that barrier. GROUP_BY is an eager barrier even on lazy input. Neither deferred execution nor pipe implies streaming through a barrier or memoization.
 
@@ -567,6 +567,224 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Hierarchy traversal
+
+`query[BFS](children, resultKey, options?)` and
+`query[DFS](children, resultKey, options?)` always return a lazy, ordered
+`QuerySequence<TraversalNode<T>>`, including when called on an eager record.
+Both selectors receive `(value, context)`. The children selector returns an
+`Iterable<readonly [string, T]>` in sibling order; it must return a fresh iterator
+or repeatable iterable on each call. Local keys need not be globally unique.
+The required result-key selector assigns each generated row its output identity;
+the common `duplicateKeys: "error" | "first" | "last"` boundary applies unchanged.
+It does not prune subtrees: even rows dropped by `"first"` still expand.
+
+```ts
+import { createQueryable, BFS, DFS, MAP, VALUES } from "@ilokesto/queryable";
+import type { TraversalContext } from "@ilokesto/queryable";
+
+interface Node {
+  name: string;
+  children: ReadonlyArray<readonly [string, Node]>;
+}
+const query = createQueryable<Node>({
+  root: {
+    name: "root",
+    children: [
+      ["left", { name: "left", children: [["leaf", { name: "leaf", children: [] }]] }],
+      ["right", { name: "right", children: [] }],
+    ],
+  },
+});
+const children = (node: Node) => node.children;
+const key = (_node: Node, context: TraversalContext<Node>) => JSON.stringify(context.path);
+query[BFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "right", "leaf"]
+query[DFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "leaf", "right"]
+```
+
+Each row has `value` plus the same context supplied to selectors:
+`key` is the original local input key, `root` is the original root value,
+`rootKey` is its input key, `path` contains local keys including the root key,
+and `depth` is zero for roots. Output keys never replace this context. Payloads
+and roots remain shallow references and are never inspected for identity.
+`path` returns a fresh readonly-typed array on each read; paths are stored
+internally as links so a deep chain does not allocate every full path unless
+requested. Materializing all paths can still require quadratic space.
+
+BFS emits all roots first, then each level in root and child iterable order.
+It uses an iterative queue and retains the frontier's child iterators. DFS uses
+an iterative iterator stack, emits preorder, and finishes a root's subtree before
+the next root; its active stack grows with depth. Neither uses recursive calls
+or reverses sibling order. BFS needs a finite current level to reach the next;
+an infinite DFS branch can prevent reaching later siblings or roots.
+
+`maxDepth` is inclusive and defaults to `Infinity`. Otherwise it must be a
+nonnegative safe integer; invalid bounds throw `RangeError` at operation
+construction, before acquisition. Zero emits only roots. Nodes at the bound do
+not call the children selector.
+
+Without `visitIdentity`, each occurrence is visited independently: repeated
+references produce separate paths and cycles need a finite bound or prefix
+consumer to terminate. With `visitIdentity(value, context)`, a fresh global
+SameValueZero Set is used per consumption, across roots. The first identity in
+traversal order wins; later occurrences emit nothing and do not expand. Use
+`visitIdentity: value => value` for reference identity, or select a domain ID.
+This visitation policy is separate from output-key collisions.
+
+Construction and `LIMIT(0)` do not acquire roots or run selectors. A node is
+yielded before its children are selected, so a prefix consumer never expands
+its final requested node. Early exit and selector, child iterator, or downstream
+errors close all still-acquired traversal iterators; all returns are attempted
+even if one throws. The original traversal error takes precedence over cleanup
+errors; an otherwise successful early close reports the first cleanup error.
+Natural exhaustion does not call `return()` on an exhausted iterator.
+Each consumption creates fresh queues, stacks, visit state, and output-key
+state and rereads the live source. `"last"` must buffer the entire traversal
+before its first result, so it cannot short-circuit an unbounded traversal.
+## Indexed joins
+
+`GROUP_JOIN(inner, outerKey, innerKey, project)` preserves each outer key and
+returns exactly one value per outer entry. `project(value, matches, outerKey)`
+receives a fresh array of readonly `[innerKey, innerValue]` tuples, empty for no
+match. It returns a record for a record receiver and a sequence for a sequence.
+
+`INNER_JOIN` and `LEFT_JOIN` use the same first three arguments, followed by
+`project(value, match, outerKey)` and optional `{ duplicateKeys }`. Their
+projection **must return `[generatedKey, result]`**, with a string key chosen by
+the caller. Both return ordered sequences. Inner matches are
+`{ matched: true, key: string, value: I }`. LEFT_JOIN also passes
+`{ matched: false }` once for an unmatched outer entry: matched `undefined` is
+not absence. INNER_JOIN emits nothing for an unmatched outer entry. Empty outer
+input produces no outputs and never invokes outer selectors or projections.
+Selectors receive `(value, originalKey)` from their own source; downstream
+callbacks receive the explicit generated keys.
+
+```ts
+import {
+  createQueryable, GROUP_JOIN, INNER_JOIN, LEFT_JOIN, LAZY, VALUES,
+} from "@ilokesto/queryable";
+
+const users = createQueryable({ alice: 1, bob: 2 });
+const orders = createQueryable({ first: { user: 1, total: 10 }, second: { user: 1, total: 20 } });
+users[GROUP_JOIN](orders, id => id, order => order.user,
+  (_id, matches) => matches.length)[VALUES](); // [2, 0]
+users[LAZY]()[INNER_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [`${key}/${match.key}`, match.value.total])[VALUES](); // [10, 20]
+users[LEFT_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [match.matched ? `${key}/${match.key}` : key,
+    match.matched ? match.value.total : undefined])[VALUES](); // [10, 20, undefined]
+```
+
+Join keys use native Map SameValueZero: `NaN` matches itself, signed zeros match,
+and objects and Symbols use identity without string coercion. Outer order
+(including SORT order) is preserved, followed by inner source order for each
+match. Generated keys cross the same identity boundary as `createQuerySequence`:
+`"error"` is the default, `"first"` keeps the first value, and `"last"` buffers
+all generated entries, retaining each key's first position and last value.
+Special string keys are ordinary data. Prefix consumers check only pulled
+generated keys with streaming policies; no implicit numbering or overwrite occurs.
+
+Each consumption builds a **fresh inner Map of match arrays**, retaining all
+inner entries: O(inner count) memory plus distinct join-key buckets. The inner
+source is fully consumed and its selector called once per entry before acquiring
+the outer iterator, even when outer input is empty. Each pulled outer entry calls
+its selector once; GROUP_JOIN projects once per outer entry, INNER_JOIN once per
+pair, and LEFT_JOIN once per pair or unmatched outer entry. GROUP_JOIN copies its
+match tuples for each projection. Expanded output can reach outer count times
+inner count for many-to-many joins; eager results retain all output entries.
+Identity checking additionally retains generated keys, or full results for `"last"`.
+Infinite inner sources cannot yield join output.
+
+Record and eager sorted receivers execute immediately; lazy receivers defer
+indexing and callbacks until demand. `LIMIT(0)` downstream of a lazy join acquires
+neither source. After indexing, streaming policies allow early outer termination
+and close acquired iterators. Callback and source errors propagate unchanged and
+close active iterators. Repeat or interleaved lazy consumers have independent
+indexes and observe live source changes; eager results are snapshots. GROUP_JOIN
+is not GROUP_BY: it follows receiver mode, while existing GROUP_BY remains eager.
+## Selector-based sets
+
+`DIFFERENCE`, `INTERSECTION`, and `UNION` take a right-hand query and two required
+selectors: `leftSelector(leftValue, originalKey)` and
+`rightSelector(rightValue, originalKey)`. The two payload types may differ; both
+selectors produce the same identity type. Equality is JavaScript Set equality
+(SameValueZero): `NaN` equals `NaN`, signed zeros match, `undefined` is a normal
+identity, and objects compare by reference, not by their fields. Record keys are
+not membership identities unless a selector explicitly returns them.
+
+| Operation | Result |
+| --- | --- |
+| `[DIFFERENCE](right, leftSelector, rightSelector)` | First original left entry per identity absent from the right |
+| `[INTERSECTION](right, leftSelector, rightSelector)` | First original left entry per identity present on the right |
+| `[UNION](right, leftSelector, rightSelector, options?)` | First original entry per identity, visiting left before right; values have type `T \| U` |
+
+These are mathematical sets, not multisets or duplicate-preserving membership
+filters. Repeated identities on either side do not multiply results. The first
+qualifying entry keeps its original key and value reference. Operations preserve
+the receiver's mode: records return records with native object key ordering;
+ordered and lazy sequences retain sequence order. The right-hand query does not
+change the receiver's evaluation mode.
+
+```ts
+import {
+  createQueryable, DIFFERENCE, INTERSECTION, UNION, ENTRIES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({
+  a: { id: 1, label: "first" },
+  b: { id: 1, label: "duplicate" },
+  c: { id: 2, label: "second" },
+});
+const right = createQueryable({ r: { code: 2 }, s: { code: 3 } });
+left[DIFFERENCE](right, row => row.id, row => row.code)[ENTRIES]();
+// [["a", { id: 1, label: "first" }]]
+left[INTERSECTION](right, row => row.id, row => row.code)[ENTRIES]();
+// [["c", { id: 2, label: "second" }]]
+left[UNION](right, row => row.id, row => row.code)[ENTRIES]();
+// a, c, s: original payloads, including the right-side { code: 3 }
+```
+
+`UNION` resolves value identities **before** output record key collisions.
+Equal identities collapse even if their keys differ. Different identities with
+the same key use `options.duplicateKeys`, the same `"error"` (default), `"first"`,
+or `"last"` policy as `createQuerySequence`. Default collisions throw
+`DuplicateKeyError`; `"first"` keeps the first payload, and `"last"` keeps the
+last payload at the first key position, including stored `undefined`. Key policy
+never resurrects an entry already discarded by identity deduplication. Thus a
+key collision policy may discard another distinct identity. `ENTRIES`,
+`TO_OBJECT`, and `PICK` all see the same resolved unique keys. Each input's own
+source key policy still runs before the set selectors.
+
+```ts
+const a = createQueryable({ shared: 1 });
+const b = createQueryable({ shared: 2 });
+// a[UNION](b, n => n, n => n); // throws: distinct identities share "shared"
+a[UNION](b, n => n, n => n, { duplicateKeys: "first" })[ENTRIES]();
+// [["shared", 1]]
+a[UNION](b, n => n, n => n, { duplicateKeys: "last" })[ENTRIES]();
+// [["shared", 2]]
+```
+
+`DIFFERENCE` and `INTERSECTION` consume the entire right side into a membership
+Set before visiting the left, even when the left is empty. The right must be
+finite. They then stream the left and retain a Set of emitted identities.
+Selectors run exactly once for each visited entry: right selectors first, then
+left selectors in left order. `UNION` instead streams the left and then the
+right, with one selector call per visited entry and a Set of seen identities.
+The `"last"` output key policy additionally buffers all candidate output keys
+before its first yield.
+
+Empty sides yield the corresponding empty or unique surviving set, without
+calling selectors on an empty side. Eager operations execute at the call;
+lazy operations defer until consumption. `LIMIT(0)` on a lazy result reads
+neither side. Early terminals can stop the left membership scan or streaming
+union, but cannot bypass right-side membership buffering or the `"last"` key
+buffer. Acquired iterators close on early exit or failure. Errors propagate
+unchanged. Every lazy consumption rebuilds membership, seen identities, and key
+state without memoization, including after errors or early exit; changes to
+live query records and repeatable source factories are visible next time.
 ## Functional composition
 
 Lowercase adapters call the existing Symbol methods with their receiver intact.
@@ -717,9 +935,10 @@ receiver's evaluation mode: records and eager ordered sequences materialize at
 the call; lazy receivers defer work, stay live and repeatable, and acquire fresh
 iterators on every consumption. An empty expansion produces no entries, and no
 mapper runs for empty input. `LIMIT(0)` on a lazy result acquires nothing.
-Acquired iterators close on exhaustion, shortest termination, early return, and
-factory, `next`, or callback failure, including nested and sibling iterators.
-Cleanup attempts every acquired iterator; a primary failure is never replaced
+Naturally exhausted iterators are not explicitly sent `return()`. Unfinished
+iterators close on shortest termination, early return, and factory, `next`, or
+callback failure, including nested and sibling iterators.
+Cleanup attempts every unfinished acquired iterator; a primary failure is never replaced
 by a cleanup failure. Without a primary failure, the first cleanup failure
 propagates. Entry tuples and ZIP row tuples are fresh; payload references remain
 shallow.
@@ -960,3 +1179,409 @@ after early return or failure. For example, a hook after `LIMIT(1)` sees that
 limited stage complete; a hook before it sees early return. No hook or source
 runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
 shared and frozen, with fresh execution state on each consumption.
+
+## Event and ReadableStream sources
+
+Import platform adapters explicitly from `@ilokesto/queryable/streams`. The root
+entry does not reexport or load them. The subpath has no runtime dependencies or
+top-level access to DOM globals and does not import `node:events`. Its factories
+return the existing `AsyncQuerySequence`, with the same shared Symbol methods.
+
+```ts
+import { FIRST, MAP, VALUES } from "@ilokesto/queryable";
+import { fromEventTarget, fromReadableStream } from "@ilokesto/queryable/streams";
+
+const target = new EventTarget();
+const controller = new AbortController();
+const events = fromEventTarget(target, "message", {
+  capacity: 16,
+  overflow: "error",
+  signal: controller.signal,
+});
+const first = events[FIRST](); // subscription starts now, not at construction
+target.dispatchEvent(new Event("message"));
+await first; // removes the subscription
+
+const numbers = fromReadableStream(() => new ReadableStream<number>({
+  start(stream) {
+    stream.enqueue(2);
+    stream.enqueue(3);
+    stream.close();
+  },
+}));
+await numbers[MAP](async value => value * 2)[VALUES](); // [4, 6]
+```
+
+### Hot events and bounded pending queues
+
+`fromEventTarget(target, event, options)` emits the original `Event`.
+`fromEventEmitter<Args>(source, event, options)` accepts a structural source with
+`on` and `off` methods; each value is the entire argument tuple `Args`, including
+empty tuples and stored `undefined`. Import a native EventEmitter in the
+application, not in the library:
+
+```ts
+import { EventEmitter } from "node:events";
+import { ENTRIES } from "@ilokesto/queryable";
+import { fromEventEmitter } from "@ilokesto/queryable/streams";
+
+const emitter = new EventEmitter();
+const query = fromEventEmitter<[number, string]>(emitter, "data", {
+  capacity: 2,
+  overflow: "drop-oldest",
+  endEvent: "end",
+});
+const result = query[ENTRIES]();
+emitter.emit("data", 10, "ten");
+emitter.emit("end");
+await result; // [["0", [10, "ten"]]]
+```
+
+Both event adapters require a positive safe-integer `capacity` and an explicit
+`overflow` policy. Invalid options throw before subscription.
+
+| Policy | When the pending event queue is full |
+| --- | --- |
+| `"error"` | Discard the queue, unsubscribe immediately, and fail with `EventQueueOverflowError` whose `capacity` is available |
+| `"drop-oldest"` | Discard the oldest queued entry, then enqueue the incoming entry |
+| `"drop-newest"` | Discard the incoming entry |
+
+The bound covers pending event entries, not values already handed to the async
+query pipeline, user callbacks, or metadata used by the existing duplicate-key
+checker. It is **not producer backpressure**: emitters and targets continue
+producing and are never paused. A failure detaches immediately, but cannot force
+an already-running downstream Promise to settle.
+
+Every consumption subscribes independently to the same hot source. There is no
+replay of events before subscription or after unsubscription, and no memoization.
+An unused query or downstream `LIMIT(0)` subscribes to nothing. `FIRST`, positive
+`LIMIT`, a consumer break, callback failure, and configured abort all clean up.
+For finite terminals on an otherwise infinite event source, limit consumption,
+configure `endEvent`, or abort.
+
+Optional `endEvent` detaches immediately and drains already queued entries.
+Optional `errorEvent` discards queued entries and fails with the exact event
+object for EventTarget or first emitted argument for EventEmitter, including
+`undefined`. EventEmitter defaults to `"error"`; EventTarget has no default error
+event. After detachment, native EventEmitter's usual unhandled `"error"` behavior
+belongs to the application again.
+
+Default keys are unique decimal strings starting at `"0"` for each subscription.
+Optional `key(value, ordinal)` receives the original event or tuple and a
+zero-based `bigint`, synchronously in dispatch order, before overflow handling.
+Dropped events therefore leave gaps in later keys. A thrown selector value,
+including `undefined`, becomes a query failure and never escapes into host event
+dispatch. A selector can use special keys such as `"__proto__"`; duplicate keys
+follow the existing async sequence's default rejection policy.
+
+Listener removal is attempted once per registration, including on errors.
+An existing source error or abort wins over cleanup failure. Without a primary
+failure, removal failure rejects consumption; all remaining removals are still
+attempted. Late callbacks are ignored.
+
+### Cold streams and reader ownership
+
+`fromReadableStream(factory, options?)` calls the synchronous factory on demand
+with the optional configured `signal`. Return a **fresh, unlocked**
+`ReadableStream<T>` for each consumption; an existing one-shot stream is not a
+repeatable factory. The adapter acquires one reader, reads sequentially, and
+awaits chunk values through the normal async sequence. It does not prefetch into
+an extra adapter queue. Native stream queuing strategies and producer
+implementation determine actual backpressure.
+
+The optional `key(chunk, ordinal)` receives the raw chunk before it is awaited
+and a zero-based `bigint`; default keys are decimal strings per reader.
+Normal exhaustion releases the lock without cancellation. Early return, read
+failure, selector failure, and abort attempt cancellation once and release once.
+Abort passes `signal.reason` to `cancel`; adapter read/selector failures pass
+their exact error; early or downstream termination uses `undefined`.
+Cancellation is invoked before release, but lock release does not wait for the
+producer's cancellation Promise. Non-abort exits await cancellation completion.
+An existing failure wins over cleanup errors; otherwise cancel failure rejects
+the consumer, followed in precedence by release failure.
+
+No factory or reader is acquired for an unused query, downstream `LIMIT(0)`, or
+an already-aborted signal. Factory and reader-acquisition failures are propagated
+unchanged. The caller must own a fresh stream; an already locked stream cannot
+transfer ownership to the adapter.
+
+### Interrupting a pending public iterator
+
+Configure `{ signal }` when a public `iterateAsyncValues` or
+`iterateAsyncEntries` iterator may be abandoned with `next()` pending. Those
+views use native async generators: `return()` queues behind a pending `next()`
+and is not an immediate disposal operation. Abort first, then await the pending
+request's rejection and any queued return. Abort detaches event listeners or
+cancels/releases the stream reader without waiting for that generator queue.
+Without a signal, arrange for the source to emit, end, or fail before awaiting
+return. Neither adapter promises to forcibly cancel arbitrary producer or
+callback Promises; late cleanup rejections after abort are observed.
+## Bounded concurrent async mapping
+
+`MAP_CONCURRENT(mapper, options)` explicitly overlaps async callbacks. Ordinary
+async `MAP` stays sequential. The new shared Symbol method returns another live,
+repeatable, nonmemoized `AsyncQuerySequence<Awaited<U>>`; every consumption owns
+its cursor, scheduler, and child controller.
+
+```ts
+import { createAsyncQuerySequence, ENTRIES, MAP_CONCURRENT } from "@ilokesto/queryable";
+
+const query = createAsyncQuerySequence(() => [["a", 1], ["b", 2]])
+  [MAP_CONCURRENT](async (value, originalKey, signal) => {
+    signal.throwIfAborted(); // also pass signal to cancellable external work
+    return `${originalKey}:${value * 2}`;
+  }, { concurrency: 4, prefetch: 2, reorderBuffer: 3 });
+await query[ENTRIES](); // [["a", "a:2"], ["b", "b:4"]]
+```
+
+`ConcurrentMapOptions` validates synchronously when constructing the stage and
+copies the options. `concurrency` is required and must be a positive safe integer.
+`prefetch` defaults to `1` and must be a positive safe integer. `reorderBuffer`
+defaults to `concurrency - 1` and must be a nonnegative safe integer.
+`ordered` defaults to `true` and must be a boolean. Fractions, `NaN`, infinities,
+unsafe integers, and values outside these ranges throw; no coercion occurs.
+
+The three budgets are independent:
+
+- At most `concurrency` callbacks are running.
+- Queued, unmapped inputs plus the one possible pending upstream `next()` occupy
+  at most `prefetch` slots. Upstream pulls are serialized, not concurrent.
+- Every running callback reserves a result slot before it starts. At most
+  `reorderBuffer + 1` callbacks have started but not emitted: one head/delivery
+  slot plus `reorderBuffer` slots. Therefore ordered results completed behind a
+  blocked head never exceed `reorderBuffer`. Including the head, or in unordered
+  mode, completed undelivered results never exceed `reorderBuffer + 1`.
+
+The scheduler owns at most `prefetch + reorderBuffer + 1` entry/pull slots.
+This is not a bound on bytes, external tasks, terminal output arrays, or other
+stages: the factory's duplicate-key checks retain keys, `"last"` buffers its
+source, and sorting/grouping retain their existing buffering contracts.
+Small reorder budgets intentionally leave workers idle under head-of-line
+blocking: `reorderBuffer: 0` permits only one mapper even with higher concurrency.
+Increasing the worker limit alone is not a memory limit or a throughput guarantee.
+Callbacks overlap asynchronous work; synchronous callbacks do not become CPU
+parallel. Readiness, not an awaited full window, drives emission, so a pending
+extra upstream pull cannot delay an already-ready result.
+
+Ordered mode emits in input order. Set `{ concurrency: 4, ordered: false }` for
+observed mapper-completion order; simultaneous settlements follow handler order.
+Both modes preserve original string keys, including integer-like and special
+keys, and stored `undefined`. They never renumber entries. Source duplicate-key
+policy still applies first. Empty input invokes no mapper and yields normal empty
+terminal results. `LIMIT(0)` never acquires the source.
+
+Callbacks start in input order and receive `(value, originalKey, signal)`. Their
+signal is a **per-consumption child signal**, not the optional signal configured
+on the factory. Configured abort forwards its reason to the child. Stopping that
+stage on early return, failure, or completion aborts the child without aborting
+the caller's controller. Existing upstream factories and ordinary callbacks keep
+receiving the original configured signal. Forward the child to external mapper
+work for cooperative cancellation; nothing forcibly stops work that ignores it.
+
+No new pulls or callbacks start without demand after the current bounded window,
+or after an observed failure, early result, or abort. Already-started work can
+settle while a consumer is paused. The first observed error wins immediately,
+even if a prior ordered item is pending; thrown values including `undefined`
+retain identity. Abandoned work and cleanup rejections remain observed. A failure
+while paused initiates upstream closure and is delivered on the next demand.
+
+An acquired upstream iterator gets at most one `return()` attempt unless it
+already exhausted. With a pending upstream pull, or on error/abort, the scheduler
+observes but does not await that return: early results do not wait for a
+non-cooperative pull or sibling mapper. Otherwise return cleanup is awaited and
+its failure rejects the consumer. A native upstream async generator can queue
+return behind its pending work, delaying its underlying cleanup and upstream
+`FINALIZE`; the configured signal may be needed to interrupt that upstream wait.
+The public async-generator views also serialize protocol calls: to interrupt a
+currently pending consumer `next()`, abort the configured signal rather than
+queueing `return()` behind it. Place awaited lifetime hooks downstream when their
+completion must precede terminal settlement. Prefetch can exhaust a short
+upstream, and run its `ON_COMPLETE`, before a downstream early result.
+## Explicit async fallback and buffered retry
+
+`query[FALLBACK]((error, signal) => fallbackEntries, { duplicateKeys })` switches
+once when its upstream factory, pull, awaited value, or callback fails. The
+factory receives the exact failure and inherited signal; it may return a sync
+or async entry source, directly or through a PromiseLike. Values are awaited.
+It does not run for normal completion, an empty source, early return, downstream
+callback/terminal failure, or a consumer body error. Fallback acquisition, pull,
+value, and cleanup failures propagate without another switch. Abort never
+selects a fallback and rejects with the signal's exact reason.
+
+```ts
+import {
+  createAsyncQuerySequence, createRetryAsyncQuerySequence, FALLBACK, VALUES,
+} from "@ilokesto/queryable";
+
+const recovered = createAsyncQuerySequence<number>(function* () {
+  yield ["a", 1];
+  throw new Error("source unavailable");
+})[FALLBACK](() => [["b", 2]]);
+await recovered[VALUES](); // [1, 2]
+
+let attempts = 0;
+const retried = createRetryAsyncQuerySequence<number>(function* () {
+  const attempt = ++attempts;
+  yield ["a", attempt];
+  if (attempt === 1) { throw new Error("try a fresh source"); }
+}, 1);
+await retried[VALUES](); // [2], never [1, 2]
+```
+
+Fallback retains the prefix already emitted before failure, then appends the
+replacement source. An empty replacement completes with that prefix; it does
+not erase output. One common key boundary covers both parts: default `"error"`
+throws `DuplicateKeyError`, `"first"` skips later collisions, and `"last"`
+buffers the entire combined stream and keeps the last value at each key's
+first position. This boundary policy is explicit and independent of the
+original source policy. With `"error"`/`"first"` a view may expose a prefix
+before a later failure; a rejected collecting terminal returns no partial array.
+With `"last"` no output appears before the combined stream completes.
+
+`createRetryAsyncQuerySequence(factory, retries, options)` is a separate
+fresh-entry-factory API, not a retry of a captured query cursor. `retries` must
+be a nonnegative safe integer and counts **additional** attempts: `0` means one
+attempt. It restarts from the beginning after factory, pull, awaited-value, or
+entry-validation failure, up to that bound; exhaustion throws the final attempt's
+exact failure. The options are the same `signal` and `duplicateKeys` policies as
+`createAsyncQuerySequence`. Empty success stops retries. Abort stops immediately,
+starts no later attempt, and preserves its exact reason; there is no delay,
+backoff, unlimited retry, or default recovery in existing operators.
+
+Each retry attempt buffers **O(N)** entries and exposes only a fully successful
+attempt, even to `FIRST()` or `LIMIT(1)`. Failed attempts' partial output is
+discarded, so it is not delivered twice and cannot collide with a later attempt.
+Infinite sources cannot produce a retry result. The factory must acquire a fresh
+cursor on every attempt and consumption. Reusing an iterator within one
+consumption stops retry with the preceding failure rather than calling `next()`
+on a closed generator and mistaking it for empty success.
+
+Only work inside the retry factory/source is retried. To retry a mapped query,
+build a fresh query inside that factory and return `iterateAsyncEntries(query)`;
+operators chained after `createRetryAsyncQuerySequence` run once over the
+successful buffer, and their failures are not retried. Source/callback side
+effects from failed attempts are **not rolled back** and may run again. Neither
+API promises transactional effects, exactly-once work, item skipping, or cursor
+resumption.
+
+Each consumption has independent fallback/attempt/duplicate state and calls its
+factories again; no result is memoized. Failure cleanup is awaited before
+fallback acquisition or the next retry, with the existing primary error winning
+over cleanup errors. Abort attempts closure without waiting for non-cooperative
+work. Nested `FINALIZE` hooks inside an attempt see that attempt's error/return;
+a hook outside successful recovery sees completion, and `ON_COMPLETE` runs only
+when its own upstream exhausts normally. Consumer break closes the active
+fallback; buffered retry has already exhausted and closed its source before
+exposing an entry.
+## Checked family composition
+
+This second module composes the implemented families and all public entry paths. The same packed-artifact gate compiles and executes it.
+
+```ts title="family-example"
+import {
+  createQueryable, createAsyncQuerySequence, createRetryAsyncQuerySequence,
+  CHUNK, DFS, DIFFERENCE, ENTRIES, FALLBACK, FIRST, GROUP_JOIN, LAZY,
+  LEFT_JOIN, LIMIT, MAP_CONCURRENT, SCAN, STATS, TOP_K, VALUES, WINDOW,
+} from "@ilokesto/queryable";
+import { map, pipe, values } from "@ilokesto/queryable/operators";
+import { VALUES as VALUES_SYMBOL } from "@ilokesto/queryable/symbols";
+import { fromEventTarget, fromReadableStream } from "@ilokesto/queryable/streams";
+
+const rows = createQueryable({ a: 1, b: 2, c: 3 });
+export const sameSymbol = VALUES === VALUES_SYMBOL;
+export const doubled = pipe(rows, map((n: number) => n * 2), values);
+export const statistics = rows[STATS](n => n);
+export const top = rows[TOP_K](2, { select: n => n, direction: "desc" })[ENTRIES]();
+export const chunks = rows[CHUNK](2)[VALUES]();
+export const windows = rows[LAZY]()[WINDOW](2)[VALUES]();
+export const scan = rows[LAZY]()[SCAN]((sum, n) => sum + n, () => 0)[VALUES]();
+const right = createQueryable({ x: 2 });
+export const difference = rows[DIFFERENCE](right, n => n, n => n)[ENTRIES]();
+export const counts = rows[GROUP_JOIN](right, n => n, n => n,
+  (_value, matches) => matches.length)[VALUES]();
+export const pairs = rows[LEFT_JOIN](right, n => n, n => n,
+  (_value, match, key) => [key + (match.matched ? "/" + match.key : "/none"), match.matched])[ENTRIES]();
+export const descendants = createQueryable({ root: 1 })[DFS](
+  n => n < 3 ? [[String(n + 1), n + 1] as const] : [],
+  (_value, context) => JSON.stringify(context.path),
+)[VALUES]().map(row => ({ value: row.value, depth: row.depth }));
+
+export async function asyncFamilies() {
+  const recovered = createAsyncQuerySequence<number>(function* () {
+    yield ["a", 1];
+    throw new Error("upstream");
+  })[FALLBACK](() => [["b", 2]]);
+  let attempts = 0;
+  const retried = createRetryAsyncQuerySequence<number>(function* () {
+    const attempt = ++attempts;
+    yield ["attempt", attempt];
+    if (attempt === 1) { throw new Error("retry"); }
+  }, 1);
+  let stream: ReadableStream<number> | undefined;
+  let cancellations = 0;
+  const controller = new AbortController();
+  const mapped = fromReadableStream(() => {
+    stream = new ReadableStream<number>({
+      start(controller) { controller.enqueue(2); controller.enqueue(3); },
+      cancel() { cancellations += 1; },
+    });
+    return stream;
+  }, { signal: controller.signal })[MAP_CONCURRENT](async n => n * 2, { concurrency: 2 })[LIMIT](1);
+  const prefix = await mapped[VALUES]();
+  controller.abort(); // Also interrupt any prefetched native reader wait.
+  const target = new EventTarget();
+  const event = fromEventTarget(target, "data", { capacity: 2, overflow: "error" })[FIRST]();
+  target.dispatchEvent(new Event("data"));
+  return {
+    recovered: await recovered[VALUES](), retried: await retried[VALUES](), attempts,
+    prefix, cancellations, unlocked: stream?.locked === false, eventType: (await event)?.type,
+  };
+}
+```
+
+## Modular imports and bundle boundaries
+
+The ESM-only package exposes the existing root plus three explicit subpaths:
+
+| Entry | Exports | Runtime boundary |
+| --- | --- | --- |
+| `@ilokesto/queryable` | All existing constructors, Symbols, adapters, and types | Constructors retain the complete shared prototype |
+| `@ilokesto/queryable/operators` | `compose`, `count`, `entries`, `find`, `first`, `lazy`, `limit`, `map`, `pick`, `pipe`, `reduce`, `some`, `sort`, `toObject`, `values`, `where` | Existing synchronous adapters and core Symbols only; no root or async implementation import |
+| `@ilokesto/queryable/symbols` | All public operation Symbols | Reexports their single definitions from core and family modules; no query constructors |
+| `@ilokesto/queryable/streams` | Event and ReadableStream adapters | Explicit platform source adapters; not reexported by the root |
+
+```ts
+import type { QuerySequence } from "@ilokesto/queryable";
+import { map, pipe, values, where } from "@ilokesto/queryable/operators";
+import { VALUES } from "@ilokesto/queryable/symbols";
+
+export function doubled(query: QuerySequence<number>): number[] {
+  return pipe(query, where((n: number) => n > 1), map((n: number) => n * 2), values);
+}
+
+export function read(query: QuerySequence<number>): number[] {
+  return query[VALUES]();
+}
+```
+
+These consumers receive an existing query. Creating that query with a root
+constructor still pays for the full shared prototype: choosing operator imports
+does not make a whole constructor-and-chain consumer operator-sized. The
+`symbols` entry also loads its family modules in native ESM; it is not a
+promise of one module per Symbol. Bundlers can remove unused exports.
+
+Root and subpath imports within one resolved package instance share exactly the
+same Symbols and adapter functions. Record and sequence methods retain their
+existing shared identities. Import order does not change this contract.
+Independently bundled or separately installed copies are separate instances;
+Symbols are not registered globally. `where`/`find` keep type-guard, `Boolean`,
+and literal-`false` narrowing, and all existing execution and buffering rules
+remain in effect.
+
+Each public entry supplies ESM and declaration export conditions. Import query
+types from the root with `import type`; private paths such as `/functional`,
+`/core-symbols`, `/dist/index.js`, and `/operators/where` are not public exports.
+Runtime dependencies remain empty. See `bench/modular-results.md` and its JSON
+artifacts in the repository for measured constructor, terminal, operator, and
+complete-chain output sizes and import graphs; `sideEffects: false` alone is
+not evidence of a smaller consumer.

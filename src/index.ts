@@ -29,6 +29,10 @@ export { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM } from "./aggregatio
 export type { NumericStats } from "./aggregation.js";
 export { FINALIZE, ON_COMPLETE } from "./lifetime.js";
 export type { ConsumptionOutcome } from "./lifetime.js";
+export { MAP_CONCURRENT } from "./concurrency.js";
+export type { ConcurrentMapOptions } from "./concurrency.js";
+export { FALLBACK, createRetryAsyncQuerySequence } from "./recovery.js";
+export type { AsyncFallbackFactory } from "./recovery.js";
 
 import {
   AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE,
@@ -45,7 +49,14 @@ import {
 export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js";
 
 import { checkedEntries } from "./entries.js";
+import { GROUP_JOIN, INNER_JOIN, LEFT_JOIN, groupJoinEntries, innerJoinEntries, leftJoinEntries } from "./joins.js";
+import type { JoinEntry, JoinMatch, LeftJoinMatch, JoinOperations } from "./joins.js";
+export { GROUP_JOIN, INNER_JOIN, LEFT_JOIN } from "./joins.js";
+export type { JoinEntry, JoinMatch, LeftJoinMatch } from "./joins.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { DIFFERENCE, INTERSECTION, UNION, membershipEntries, unionEntries } from "./sets.js";
+
+export { DIFFERENCE, INTERSECTION, UNION } from "./sets.js";
 import { CONCAT, ZIP, FLAT_MAP, concatEntries, flatMapEntries, managedEntries, zipEntries } from "./combine.js";
 
 export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
@@ -62,6 +73,11 @@ export type { EntryBuffer, EntryPair, WindowEntry } from "./windows.js";
 
 import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
+import { BFS, DFS, traversalDepth, traversalEntries } from "./traversal.js";
+import type { ChildrenSelector, TraversalKeySelector, TraversalNode, TraversalOptions } from "./traversal.js";
+export { BFS, DFS } from "./traversal.js";
+export type { ChildrenSelector, TraversalContext, TraversalKeySelector, TraversalNode, TraversalOptions } from "./traversal.js";
+
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 export {
@@ -73,79 +89,14 @@ export type { ShapeEntry, ShapeQueryable, ShapeSnapshot } from "./shape.js";
 export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
 export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 
-/** Eagerly group by arbitrary native Map key identity. */
-export const GROUP_BY_MAP = Symbol("group_by_map");
-/** Collect original keys and values in a fresh Map, preserving query order. */
-export const TO_MAP = Symbol("to_map");
-/** Collect distinct values in first-occurrence order using SameValueZero. */
-export const TO_SET = Symbol("to_set");
-/** Collect original string keys in query order. */
-export const KEYS = Symbol("keys");
-
-/** Filter records, preserving type guard narrowing.
- * @example query[WHERE](value => value.age >= 20)
- */
-export const WHERE = Symbol("where");
-/** Sort into an ordered sequence, including integer-index keys.
- * @example query[SORT]((a, b) => b.age - a.age)[VALUES]()
- */
-export const SORT = Symbol("sort");
-/** Transform values without changing their record keys.
- * @example query[MAP](value => value.name)
- */
-export const MAP = Symbol("map");
-/** Pick record keys in argument order, ignoring missing and duplicate keys.
- * @example query[PICK]("alice", "bob")
- */
-export const PICK = Symbol("pick");
-/** Limit using slice(0, n) semantics.
- * @example query[LIMIT](5)
- */
-export const LIMIT = Symbol("limit");
-/** Materialize groups with literal key inference and optional presence.
- * @example query[GROUP_BY](value => value.active ? "active" : "inactive")
- */
-export const GROUP_BY = Symbol("group_by");
-/** Group by a string discriminant, narrowing each group's union members.
- * @example query[GROUP_BY_PROP]("kind").cat?.[VALUES]()
- */
-export const GROUP_BY_PROP = Symbol("group_by_prop");
-/** Count records.
- * @example query[COUNT]()
- */
-export const COUNT = Symbol("count");
-/** Read the first value, or undefined.
- * @example query[FIRST]()
- */
-export const FIRST = Symbol("first");
-/** Collect values in query order.
- * @example query[VALUES]()
- */
-export const VALUES = Symbol("values");
-/** Find the first matching value without building a filtered collection.
- * @example query[FIND](value => value.age >= 20)
- */
-export const FIND = Symbol("find");
-/** Stop at the first matching value.
- * @example query[SOME](value => value.active)
- */
-export const SOME = Symbol("some");
-/** Collect fresh key/value tuples in query order.
- * @example query[ENTRIES]()
- */
-export const ENTRIES = Symbol("entries");
-/** Copy data to an ordinary object; integer keys regain native object ordering.
- * @example query[TO_OBJECT]()
- */
-export const TO_OBJECT = Symbol("to_object");
-/** Fold values and keys with an explicit initial accumulator.
- * @example query[REDUCE]((sum, value) => sum + value.price, 0)
- */
-export const REDUCE = Symbol("reduce");
-/** Create a repeatable, non-memoized lazy view.
- * @example query[LAZY]()[WHERE](value => value.active)[LIMIT](5)[VALUES]()
- */
-export const LAZY = Symbol("lazy");
+import {
+  COUNT, ENTRIES, FIND, FIRST, GROUP_BY, GROUP_BY_MAP, GROUP_BY_PROP, KEYS,
+  LAZY, LIMIT, MAP, PICK, REDUCE, SOME, SORT, TO_MAP, TO_OBJECT, TO_SET, VALUES, WHERE,
+} from "./core-symbols.js";
+export {
+  COUNT, ENTRIES, FIND, FIRST, GROUP_BY, GROUP_BY_MAP, GROUP_BY_PROP, KEYS,
+  LAZY, LIMIT, MAP, PICK, REDUCE, SOME, SORT, TO_MAP, TO_OBJECT, TO_SET, VALUES, WHERE,
+} from "./core-symbols.js";
 
 const ITERATE = Symbol("iterate");
 const COMBINE = Symbol("combine");
@@ -237,7 +188,27 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
+interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, M>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
+  /** Lazy breadth-first traversal; local child keys and output identity are explicit. */
+  [BFS](this: Result<T, M>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options?: TraversalOptions<T>): QuerySequence<TraversalNode<T>>;
+  /** Lazy preorder depth-first traversal; no recursive call stack. */
+  [DFS](this: Result<T, M>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options?: TraversalOptions<T>): QuerySequence<TraversalNode<T>>;
+  /** First original left entry per identity absent from the buffered right side. */
+  [DIFFERENCE]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First original left entry per identity present on the buffered right side. */
+  [INTERSECTION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First identity wins left-to-right; output key collisions use duplicateKeys. */
+  [UNION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Result<T | U, M>;
   /** Append explicitly keyed sources; duplicateKeys defaults to error. */
   [CONCAT]<U>(this: Result<T, M>, sources: readonly (Queryable<U> | QuerySequence<U>)[], options?: QuerySequenceOptions): QuerySequence<T | U>;
   /** Pair positions, retaining the receiver key; pulls left to right until shortest. */
@@ -615,6 +586,62 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [BFS]<T>(this: Queryable<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, true);
+  },
+  [DFS]<T>(this: Queryable<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, false);
+  },
+  [GROUP_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, matches: readonly JoinEntry<I>[], key: string) => U,
+  ): Queryable<U> {
+    return fromEntries(groupJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project));
+  },
+  [INNER_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: JoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => innerJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return new Sequence(Array.from(query[ITERATE]()), false);
+  },
+  [LEFT_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: LeftJoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => leftJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return new Sequence(Array.from(query[ITERATE]()), false);
+  },
+  [DIFFERENCE]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, false));
+  },
+  [INTERSECTION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, true));
+  },
+  [UNION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Queryable<T | U> {
+    return fromEntries(iterateEntries(createQuerySequence(
+      () => unionEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector), options,
+    )));
+  },
   ...combinationMethods,
   [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
     return new Sequence(Array.from(iterateEntries(createQuerySequence(factory, options))), false);
@@ -745,6 +772,35 @@ interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
+  [GROUP_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, matches: readonly JoinEntry<I>[], key: string) => U,
+  ): QuerySequence<U> {
+    return this.next(defer(groupJoinEntries, this.source, iterateEntries(inner), outerKey, innerKey, project));
+  }
+  [INNER_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: JoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => innerJoinEntries(this.source, iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return this.next(query[ITERATE]());
+  }
+  [LEFT_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: LeftJoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => leftJoinEntries(this.source, iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return this.next(query[ITERATE]());
+  }
   [ITERATE](): Iterable<Entry<T>> {
     return this.source;
   }
@@ -755,6 +811,34 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [BFS](this: QuerySequence<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, true);
+  }
+  [DFS](this: QuerySequence<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, false);
+  }
+  [DIFFERENCE]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, false));
+  }
+  [INTERSECTION]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, true));
+  }
+  [UNION]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<T | U> {
+    return this[COMBINE]<T | U>(
+      () => unionEntries(this.source, iterateEntries(right), leftSelector, rightSelector), options,
+    );
   }
 
   private buffers<U>(source: Iterable<Entry<U>>, copy: (value: U) => U): Sequence<U> {
@@ -957,6 +1041,20 @@ export function createQuerySequence<T>(
       throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
     }
   }
+}
+
+function traverse<T>(
+  source: Queryable<T> | QuerySequence<T>,
+  children: ChildrenSelector<T>,
+  keySelector: TraversalKeySelector<T>,
+  options: TraversalOptions<T>,
+  breadthFirst: boolean,
+): QuerySequence<TraversalNode<T>> {
+  const maxDepth = traversalDepth(options);
+  return createQuerySequence(
+    () => traversalEntries(iterateEntries(source), children, keySelector, options, maxDepth, breadthFirst),
+    options,
+  );
 }
 
 function* entryView<T>(query: Source<T>): Generator<[string, T]> {

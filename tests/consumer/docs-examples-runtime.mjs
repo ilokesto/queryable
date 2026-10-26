@@ -27,3 +27,20 @@ assert.deepEqual(await cancelMigration(), {
   sameReason: true,
   result: undefined,
 });
+
+const family = await import('./dist/family-examples.js');
+assert.equal(family.sameSymbol, true);
+assert.deepEqual(family.doubled, [2, 4, 6]);
+assert.deepEqual(family.statistics, { count: 3, sum: 6, average: 2, min: 1, max: 3 });
+assert.deepEqual(family.top, [['c', 3], ['b', 2]]);
+assert.deepEqual(family.chunks, [[['a', 1], ['b', 2]], [['c', 3]]]);
+assert.deepEqual(family.windows, [[['a', 1], ['b', 2]], [['b', 2], ['c', 3]]]);
+assert.deepEqual(family.scan, [1, 3, 6]);
+assert.deepEqual(family.difference, [['a', 1], ['c', 3]]);
+assert.deepEqual(family.counts, [0, 1, 0]);
+assert.deepEqual(family.pairs, [['a/none', false], ['b/x', true], ['c/none', false]]);
+assert.deepEqual(family.descendants, [{ value: 1, depth: 0 }, { value: 2, depth: 1 }, { value: 3, depth: 2 }]);
+assert.deepEqual(await family.asyncFamilies(), {
+  recovered: [1, 2], retried: [2], attempts: 2, prefix: [4],
+  cancellations: 1, unlocked: true, eventType: 'data',
+});
