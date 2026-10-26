@@ -1,5 +1,14 @@
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import {
+  CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY,
+  copyBuffer, copyPair, copyBuffers, windowEntries, pairEntries,
+  splitEntries, partitionEntries, validateWindowSize,
+} from "./windows.js";
+import type { EntryBuffer, EntryPair, WindowOperations } from "./windows.js";
+
+export { CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY } from "./windows.js";
+export type { EntryBuffer, EntryPair, WindowEntry } from "./windows.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
@@ -110,7 +119,7 @@ interface Terminals<T> extends Source<T> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T> {
+interface Operations<T, M extends Mode> extends Terminals<T>, WindowOperations<T, Result<T, M>> {
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -316,6 +325,21 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
 
 const queryablePrototype = {
   ...terminals,
+  [CHUNK]<T>(this: Queryable<T>, size: number): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[CHUNK](size);
+  },
+  [WINDOW]<T>(this: Queryable<T>, size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[WINDOW](size, stride, partial);
+  },
+  [PAIRWISE]<T>(this: Queryable<T>): QuerySequence<EntryPair<T>> {
+    return new Sequence(recordEntries(this), false)[PAIRWISE]();
+  },
+  [SPLIT]<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[SPLIT](predicate);
+  },
+  [PARTITION_BY]<T, K>(this: Queryable<T>, selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[PARTITION_BY](selector);
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
@@ -363,6 +387,29 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  private buffers<U>(source: Iterable<Entry<U>>, copy: (value: U) => U): Sequence<U> {
+    return new Sequence(this.lazy ? source : defer(copyBuffers, Array.from(source), copy), this.lazy);
+  }
+
+  [CHUNK](size: number): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    return this.buffers(defer(windowEntries, this.source, size, size, true), copyBuffer<T>);
+  }
+  [WINDOW](size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    validateWindowSize(stride, "stride");
+    return this.buffers(defer(windowEntries, this.source, size, stride, partial), copyBuffer<T>);
+  }
+  [PAIRWISE](): QuerySequence<EntryPair<T>> {
+    return this.buffers(defer(pairEntries, this.source), copyPair<T>);
+  }
+  [SPLIT](predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(splitEntries, this.source, predicate), copyBuffer<T>);
+  }
+  [PARTITION_BY]<K>(selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(partitionEntries, this.source, selector), copyBuffer<T>);
   }
 
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;

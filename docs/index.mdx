@@ -148,3 +148,70 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 `PICK`, grouping, sorting, and collection outputs receive the same unique-key
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
+
+## Local entry buffers and adjacent groups
+
+These shared Symbol methods return ordered `QuerySequence` results. Each result
+key is the original key of its first included entry (its anchor), never a
+generated index or a selector result. Unique input keys therefore give unique
+anchors, including numeric and special keys. Each value is a fresh mutable array
+of fresh `[originalKey, value]` tuples; nested values remain shallow references.
+Overlapping windows do not share exposed tuples. Later pulls and repeated
+consumption do not modify previously returned buffers, and editing an exposed
+buffer does not edit retained eager snapshots.
+
+| Method | Buffer policy |
+| --- | --- |
+| `[CHUNK](size)` | Nonoverlapping batches; include the final nonempty partial chunk |
+| `[WINDOW](size, stride = 1, partial = false)` | Start at positions `0, stride, 2 * stride, ...`; overlap when stride is smaller than size, skip gaps when larger; emit only full windows unless partial is true |
+| `[PAIRWISE]()` | Complete overlapping pairs; `EntryPair<T>` is exactly `[[string, T], [string, T]]` |
+| `[SPLIT]((value, originalKey) => boolean)` | Matching entries are delimiters and are excluded; leading, repeated, and trailing delimiters never produce empty groups |
+| `[PARTITION_BY]((value, originalKey) => selected)` | Emit consecutive runs of equal selector results; include the final nonempty run |
+
+`size` and `stride` must be positive finite integers; invalid arguments throw
+`RangeError` immediately, even on a lazy or empty query, before acquiring input.
+Empty input yields no buffers. A short input yields a partial CHUNK, no default
+WINDOW or PAIRWISE, and a partial WINDOW only when requested. With partial windows
+enabled, every start position before the end can yield a nonempty trailing
+window, including multiple shrinking overlapping tails.
+
+```ts
+import {
+  createQueryable, LAZY, CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+query[CHUNK](3)[ENTRIES]();
+// [["a", [["a", 1], ["b", 1], ["c", 2]]], ["d", [["d", 1]]]]
+query[WINDOW](2, 3, true)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[PAIRWISE]()[VALUES](); // three complete pairs of original entries
+query[LAZY]()[SPLIT](value => value === 2)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[LAZY]()[PARTITION_BY](value => value)[VALUES]();
+// [[["a", 1], ["b", 1]], [["c", 2]], [["d", 1]]]
+```
+
+PARTITION_BY uses the SameValueZero equality contract of Set-based DISTINCT_BY:
+`NaN` equals `NaN`, `-0` equals `0`, and objects and Symbols compare by identity.
+Stored `undefined` and an `undefined` selector result are ordinary data, not
+missing-state sentinels. `A,A,B,A` forms three runs, unlike eager GROUP_BY, which
+still collects all equal string group keys together.
+
+On records and eager sequences these methods execute immediately and return
+snapshots. After LAZY they defer execution, read the live source again on each
+consumption, and create independent buffer state without memoization. Callbacks
+run once per pulled entry in source order with `(value, originalKey)`. SPLIT
+reads through the delimiter ending a group. PARTITION_BY must select one entry
+past a run to discover its boundary; that entry starts the next run without a
+second selector call. At source exhaustion no extra callback runs. Early exit
+and callback or source failures close acquired upstream generators; errors
+propagate unchanged and the next consumption starts fresh.
+
+Lazy CHUNK/WINDOW retain at most `size` original entries internally; PAIRWISE
+retains one previous entry. Fresh emitted copies also cost space proportional to
+the emitted buffer. SPLIT and PARTITION_BY may retain an unbounded current group
+until a delimiter, a changed selector, or source exhaustion arrives; they cannot
+produce a group from an infinite uninterrupted run. These bounds exclude
+upstream identity tracking, buffering operators, and results retained by the
+consumer. Eager evaluation necessarily stores all resulting buffers.
