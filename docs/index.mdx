@@ -158,3 +158,119 @@ Numbers use JavaScript arithmetic without filtering or coercion: sum is left-to-
 Both grouped terminals fold directly without retaining full groups. Their result has a null prototype, so `""`, `__proto__`, `constructor`, and `toString` are safe string group keys. Literal key unions remain inferred, but each property is optional because the group may be absent; use `Object.hasOwn(result, key)` to distinguish an absent group from a present `undefined` accumulator. Output property enumeration follows native object ordering, including integer-like keys. Within each group reducers see the stable source order. Errors from upstream work, selectors, factories, and reducers propagate immediately; later lazy consumption starts a fresh traversal and creates fresh accumulators.
 
 `GROUP_BY` remains different: it eagerly materializes full snapshot groups that can be queried further. Use it when group contents are needed; use `COUNT_BY` or `REDUCE_BY` when only a per-group count or fold is needed.
+
+## Lookup and default reads
+
+These shared terminal methods work on records, ordered sequences, and lazy views in query order.
+
+| Operation | Result |
+| --- | --- |
+| `[LAST]()` | Last value, or `undefined` when empty |
+| `[AT](index)` | Value at a zero-based index; negative indexes count from the end |
+| `[SINGLE](predicate?)` | Only matching value, or `undefined` for no match; throws `RangeError` on the second match |
+| `[EVERY](predicate)` | Whether every value matches; `true` when empty |
+| `[IS_EMPTY]()` | Whether no entry exists |
+| `[INCLUDES](value)` | Whether a value exists using SameValueZero (`NaN` matches `NaN`, `0` matches `-0`, objects use identity) |
+| `[FIND_ENTRY](predicate)` | First matching fresh `[key, value]` tuple, or `undefined` |
+| `[FIRST_OR](value)` | First value, using the supplied fallback only when empty |
+| `[FIRST_OR_ELSE](factory)` | First value, calling the zero-argument factory exactly once only when empty |
+
+Predicates receive `(value, key)`. `SINGLE` without a predicate counts every entry; with a predicate it counts only matches. A stored `undefined` is still a match and a second such entry still throws. `SINGLE` and `FIND_ENTRY` preserve type guard narrowing. Returned tuples are fresh but their values remain shared references.
+
+`AT` uses `Array.at` numeric coercion: fractions truncate toward zero, `NaN` selects index zero, and signed zero selects the first entry. Both infinities return `undefined` without iterating or executing pending lazy callbacks. Coercion errors propagate before iteration. A finite nonnegative index stops at the selected entry (or exhausts the query when out of range). A finite negative index consumes the whole query and buffers at most `min(entry count, abs(truncated index))` values. `LAST` also consumes the whole query. `SINGLE` consumes until exhaustion or its second match; the other reads stop as soon as their result is known. Repeated calls on lazy views repeat pending work.
+
+Presence never depends on truthiness or on whether a value is `undefined`. Existing `FIRST` and `FIND` still return `undefined` for either absence or a stored `undefined`; default reads instead inspect entry presence and keep stored `0`, `false`, and `undefined` unchanged. Predicate and factory errors propagate unchanged.
+
+```ts
+import {
+  createQueryable, AT, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, SINGLE,
+} from "@ilokesto/queryable";
+
+const query = createQueryable<number | string | undefined>({ a: undefined, b: 0, c: "three" });
+query[FIRST_OR](99); // undefined: entry "a" exists
+query[FIRST_OR_ELSE](() => 99); // undefined: factory is not called
+query[AT](-1); // "three"
+query[SINGLE]((value): value is string => typeof value === "string"); // string | undefined
+query[FIND_ENTRY]((value): value is string => typeof value === "string"); // [string, string] | undefined
+```
+
+## Bounds and prefixes
+
+These shared Symbol operations retain original keys and query mode: records return records, and ordered or lazy sequences return sequences. They execute immediately on eager queries and defer work on lazy queries.
+
+| Operation | Result |
+| --- | --- |
+| `[SKIP](n)` | Exclude the first `n` entries |
+| `[TAKE_WHILE]((value, key) => boolean)` | Keep the matching prefix, excluding the first mismatch |
+| `[DROP_WHILE]((value, key) => boolean)` | Exclude the matching prefix, including the first mismatch in the result |
+| `[TAKE_LAST](n)` | Keep the last `n` entries in input order |
+| `[DROP_LAST](n)` | Exclude the last `n` entries in input order |
+
+All three numeric bounds use the same size normalization: truncate fractions toward zero, clamp negative sizes (including `-Infinity`) to zero, treat `NaN` as zero, and retain `Infinity`. Thus `SKIP(0)` and `DROP_LAST(0)` keep everything, while `TAKE_LAST(0)` is empty and does not read upstream. This does not change the signed `slice(0, n)` contract of `LIMIT`.
+
+```ts
+import {
+  createQueryable, LAZY, SKIP, LIMIT, TAKE_WHILE, DROP_WHILE,
+  TAKE_LAST, DROP_LAST, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 2, c: 3, d: 2 });
+query[LAZY]()[SKIP](1)[LIMIT](2)[VALUES](); // [2, 3]
+query[TAKE_WHILE](n => n < 3)[VALUES](); // [1, 2]
+query[DROP_WHILE](n => n < 3)[VALUES](); // [3, 2]
+query[TAKE_LAST](2)[VALUES](); // [3, 2]
+query[DROP_LAST](2)[VALUES](); // [1, 2]
+```
+
+Use `SKIP(start)[LIMIT](length)` for a nonnegative window; there is no separate `SLICE` operation. Integer record keys still follow native object ordering; sequence keys retain their upstream order. Stored `undefined` and special keys are retained normally.
+
+`TAKE_WHILE` stops at the first mismatch and supports type guards. `DROP_WHILE` stops calling its predicate after the first mismatch; its remaining values are not narrowed. Both predicates receive the original key.
+
+On lazy queries, `SKIP(n)[FIRST]()` pulls at most `n + 1` entries and `TAKE_WHILE(predicate)[LIMIT](k)` stops after the required prefix without testing a later entry. `TAKE_LAST(n)` must finish upstream before yielding anything and stores at most `n` entries in a ring buffer for finite sizes. `DROP_LAST(n)` uses at most `n` buffered entries and needs `n + 1` upstream entries for its first output; early terminals can then stop it. Neither operation moves ahead of sorting, sequence `PICK`, or negative `LIMIT` barriers.
+
+`SKIP(Infinity)` and `DROP_LAST(Infinity)` consume upstream and return no entries; the latter stores none. `TAKE_LAST(Infinity)` consumes and buffers the entire input before returning all entries. Each consumption gets fresh counters, predicate state, and buffers, including after early termination or an error. Lazy callbacks and errors remain deferred, and mutations between consumptions remain visible.
+
+## Iterable sources and key identity
+
+`createQuerySequence(factory, options?)` creates a lazy sequence from a factory of
+`Iterable<readonly [string, T]>`. Construction does not call the factory. Each
+consumption calls it again: return a fresh iterator or a repeatable iterable, not
+the same exhausted generator. There is no result cache or automatic rewind.
+
+```ts
+import { createQuerySequence, iterateEntries, iterateValues } from "@ilokesto/queryable";
+
+const rows = new Map([["2", 20], ["1", 10]]);
+const query = createQuerySequence(() => rows.entries());
+const entries = iterateEntries(query); // no consumption yet
+[...entries]; // [["2", 20], ["1", 10]]
+rows.set("2", 30);
+[...iterateValues(query)]; // [30, 10]
+```
+
+`iterateEntries(query)` and `iterateValues(query)` accept records and sequences
+without first collecting an array. Each iterator is independent. Entry views
+return fresh mutable tuples; changing them does not change a buffered query.
+Values remain shallow references. A query itself has no ambiguous default
+iterator: choose entries or values explicitly.
+
+External entries must be two-element arrays with string keys. Values, including
+`undefined`, Symbols, and opaque objects, are not inspected. Malformed entries
+throw `TypeError` when pulled. Acquired generators close on early exit or a
+downstream error; `LIMIT(0)` does not acquire the source.
+
+The `duplicateKeys` option makes key collisions explicit:
+
+| Policy | Behavior |
+| --- | --- |
+| `"error"` (default) | Throw `DuplicateKeyError`, whose `key` identifies the repeated key, when that entry is pulled |
+| `"first"` | Keep the first value, including a stored `undefined`; later occurrences are skipped |
+| `"last"` | Consume the whole source before yielding; use the last value while keeping each key's first position |
+
+Every consumption creates fresh identity state. The streaming policies retain a
+set of observed keys; `"last"` buffers a map of all distinct keys. Prefix
+consumers validate only what they pull, not the unconsumed tail. Full consumers
+therefore reject duplicate keys by default instead of silently overwriting them.
+`PICK`, grouping, sorting, and collection outputs receive the same unique-key
+entries. This is also the identity boundary for future multi-source operations.
+`TO_OBJECT` still intentionally restores native object ordering for integer keys.

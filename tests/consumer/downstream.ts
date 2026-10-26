@@ -1,6 +1,7 @@
 import { LAZY, VALUES } from "@ilokesto/queryable";
 import {
-  groups, lazy, literalCounts, literalFold, narrowed, ordered, record, stats,
+  fallbackFactory, fallbackValue, guardedEntry, guardedSingle, groups,
+  lazy, literalCounts, literalFold, narrowed, ordered, record, stats,
 } from "./dist/consumer.js";
 import type { NumericStats } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "./dist/consumer.js";
@@ -16,3 +17,8 @@ export const forwardedFold:
 export const forwardedStats: NumericStats = stats;
 export const countKey: keyof typeof literalCounts = "positive";
 export const foldKey: keyof typeof literalFold = "other";
+
+export const forwardedEntry: [string, string] | undefined = guardedEntry;
+export const forwardedSingle: number | undefined = guardedSingle;
+export const forwardedFallback: string | number | boolean = fallbackValue;
+export const forwardedFactoryFallback: string | number | boolean = fallbackFactory;

@@ -1,5 +1,6 @@
 import {
-  COUNT_BY, FIND, GROUP_BY, LAZY, MAP, REDUCE, REDUCE_BY, SORT, STATS,
+  AT, COUNT_BY, EVERY, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY,
+  INCLUDES, IS_EMPTY, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
   VALUES, WHERE, createQueryable,
 } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "@ilokesto/queryable";
@@ -32,3 +33,13 @@ export const literalFold = mapped[REDUCE_BY](
   }),
 );
 export const stats = mapped[STATS](value => value);
+
+export const guardedEntry = ordered[FIND_ENTRY](value => typeof value === "string");
+export const guardedSingle = lazy[SINGLE](value => typeof value === "number");
+export const relative: string | number | undefined = lazy[AT](-1);
+export const last: string | number | undefined = record[LAST]();
+export const every: boolean = record[EVERY](value => typeof value === "string");
+export const empty: boolean = lazy[IS_EMPTY]();
+export const contains: boolean = ordered[INCLUDES](2);
+export const fallbackValue = record[FIRST_OR](false);
+export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
