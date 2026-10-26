@@ -69,6 +69,11 @@ export type { EntryBuffer, EntryPair, WindowEntry } from "./windows.js";
 
 import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
+import { BFS, DFS, traversalDepth, traversalEntries } from "./traversal.js";
+import type { ChildrenSelector, TraversalKeySelector, TraversalNode, TraversalOptions } from "./traversal.js";
+export { BFS, DFS } from "./traversal.js";
+export type { ChildrenSelector, TraversalContext, TraversalKeySelector, TraversalNode, TraversalOptions } from "./traversal.js";
+
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 export {
@@ -180,6 +185,10 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, M>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
+  /** Lazy breadth-first traversal; local child keys and output identity are explicit. */
+  [BFS](this: Result<T, M>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options?: TraversalOptions<T>): QuerySequence<TraversalNode<T>>;
+  /** Lazy preorder depth-first traversal; no recursive call stack. */
+  [DFS](this: Result<T, M>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options?: TraversalOptions<T>): QuerySequence<TraversalNode<T>>;
   /** First original left entry per identity absent from the buffered right side. */
   [DIFFERENCE]<U, K>(
     this: Result<T, M>, right: QuerySequence<U>,
@@ -573,6 +582,12 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [BFS]<T>(this: Queryable<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, true);
+  },
+  [DFS]<T>(this: Queryable<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, false);
+  },
   [GROUP_JOIN]<T, I, K, U>(
     this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
     outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
@@ -794,6 +809,12 @@ class Sequence<T> implements QuerySequence<T> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
   }
 
+  [BFS](this: QuerySequence<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, true);
+  }
+  [DFS](this: QuerySequence<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
+    return traverse(this, children, keySelector, options, false);
+  }
   [DIFFERENCE]<U, K>(
     right: QuerySequence<U>,
     leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
@@ -1016,6 +1037,20 @@ export function createQuerySequence<T>(
       throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
     }
   }
+}
+
+function traverse<T>(
+  source: Queryable<T> | QuerySequence<T>,
+  children: ChildrenSelector<T>,
+  keySelector: TraversalKeySelector<T>,
+  options: TraversalOptions<T>,
+  breadthFirst: boolean,
+): QuerySequence<TraversalNode<T>> {
+  const maxDepth = traversalDepth(options);
+  return createQuerySequence(
+    () => traversalEntries(iterateEntries(source), children, keySelector, options, maxDepth, breadthFirst),
+    options,
+  );
 }
 
 function* entryView<T>(query: Source<T>): Generator<[string, T]> {

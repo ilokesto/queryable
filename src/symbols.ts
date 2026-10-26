@@ -13,3 +13,4 @@ export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
 export { CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY } from "./windows.js";
 export { DIFFERENCE, INTERSECTION, UNION } from "./sets.js";
 export { GROUP_JOIN, INNER_JOIN, LEFT_JOIN } from "./joins.js";
+export { BFS, DFS } from "./traversal.js";

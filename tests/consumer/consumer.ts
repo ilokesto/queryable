@@ -1,10 +1,11 @@
 import {
+  BFS, DFS,
   AT, COUNT_BY, EVERY, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
   GROUP_JOIN, INNER_JOIN, LEFT_JOIN,
   INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
   ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable, iterateAsyncEntries,
 } from "@ilokesto/queryable";
-import type { Queryable, QuerySequence } from "@ilokesto/queryable";
+import type { Queryable, QuerySequence, TraversalContext, TraversalNode } from "@ilokesto/queryable";
 
 export type { Queryable, QuerySequence } from "@ilokesto/queryable";
 export * from "./predicate-types.js";
@@ -67,6 +68,15 @@ export const contains: boolean = ordered[INCLUDES](2);
 export const fallbackValue = record[FIRST_OR](false);
 export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
 
+export const breadthRows: QuerySequence<TraversalNode<string | number>> = record[BFS](
+  (value, context: TraversalContext<string | number>) => context.depth < 1 ? [["child", value]] : [],
+  (_value, context) => JSON.stringify(context.path),
+);
+export const depthRows = lazy[DFS](
+  (value, context) => context.depth < 1 ? [["child", value]] : [],
+  (_value, context) => JSON.stringify(context.path),
+  { maxDepth: 1, visitIdentity: (_value, context) => JSON.stringify(context.path) },
+);
 const joinInner = createQueryable({ x: 3, y: 1 });
 export const joinGroups: Queryable<number> = record[GROUP_JOIN](
   joinInner, value => String(value).length, value => value,
