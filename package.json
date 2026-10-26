@@ -19,6 +19,14 @@
     "./streams": {
       "types": "./dist/streams.d.ts",
       "import": "./dist/streams.js"
+    },
+    "./operators": {
+      "types": "./dist/functional.d.ts",
+      "import": "./dist/functional.js"
+    },
+    "./symbols": {
+      "types": "./dist/symbols.d.ts",
+      "import": "./dist/symbols.js"
     }
   },
   "files": ["dist"],
