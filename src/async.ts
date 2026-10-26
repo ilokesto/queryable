@@ -2,7 +2,7 @@ import { DuplicateKeyError } from "./entries.js";
 import type { KeyCollisionPolicy } from "./entries.js";
 import { FINALIZE, ON_COMPLETE, completeEntries, finalizeEntries, waitFor } from "./lifetime.js";
 import type { ConsumptionOutcome } from "./lifetime.js";
-import { COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, SOME, SORT, VALUES, WHERE } from "./index.js";
+import { COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, SOME, SORT, VALUES, WHERE } from "./core-symbols.js";
 
 type Entry<T> = readonly [string, T];
 type Awaitable<T> = T | PromiseLike<T>;

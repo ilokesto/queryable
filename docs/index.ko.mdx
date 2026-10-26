@@ -818,3 +818,46 @@ finalizer가 끝나야 consumer도 끝납니다.
 실패에서는 실행하지 않습니다. `LIMIT(1)` 뒤의 hook은 제한된 단계의 정상 완료를,
 앞의 hook은 조기 반환을 봅니다. 미사용 쿼리와 downstream `LIMIT(0)`은 원본도
 hook도 실행하지 않습니다. 메서드는 공유·동결하며 매 소비의 실행 상태는 독립적입니다.
+
+## 모듈별 import와 번들 경계
+
+ESM 전용 패키지는 기존 root와 두 개의 명시적인 subpath를 제공합니다.
+
+| entry | export | 런타임 경계 |
+| --- | --- | --- |
+| `@ilokesto/queryable` | 기존 생성자·Symbol·어댑터·타입 전체 | 생성자는 전체 공유 prototype을 유지 |
+| `@ilokesto/queryable/operators` | `compose`, `count`, `entries`, `find`, `first`, `lazy`, `limit`, `map`, `pick`, `pipe`, `reduce`, `some`, `sort`, `toObject`, `values`, `where` | 기존 동기 어댑터와 핵심 Symbol만 로드하며 root·비동기 구현은 import하지 않음 |
+| `@ilokesto/queryable/symbols` | 모든 공개 연산 Symbol | 핵심·기능군 모듈의 단일 정의를 다시 export하며 쿼리 생성자는 포함하지 않음 |
+
+```ts
+import type { QuerySequence } from "@ilokesto/queryable";
+import { map, pipe, values, where } from "@ilokesto/queryable/operators";
+import { VALUES } from "@ilokesto/queryable/symbols";
+
+export function doubled(query: QuerySequence<number>): number[] {
+  return pipe(query, where((n: number) => n > 1), map((n: number) => n * 2), values);
+}
+
+export function read(query: QuerySequence<number>): number[] {
+  return query[VALUES]();
+}
+```
+
+이 소비자는 이미 만들어진 쿼리를 받습니다. root 생성자로 쿼리를 만들면 여전히
+전체 공유 prototype 비용을 부담합니다. operator import를 선택해도 생성자와
+체인을 함께 포함한 번들이 연산 하나의 크기로 줄지는 않습니다. 네이티브 ESM에서
+`symbols` entry는 기능군 모듈도 로드하므로 Symbol마다 모듈 하나만 로드한다는
+보장이 아닙니다. 번들러는 사용하지 않는 export를 제거할 수 있습니다.
+
+하나의 해석된 패키지 인스턴스 안에서는 root와 subpath가 정확히 같은 Symbol과
+어댑터 함수를 공유합니다. 레코드·시퀀스 메서드의 기존 공유 identity도 유지하며
+import 순서에 영향을 받지 않습니다. 독립 번들 또는 별도 설치된 복사본은 별도
+인스턴스이며 Symbol을 전역 registry에 등록하지 않습니다. `where`·`find`의
+타입 가드·`Boolean`·리터럴 `false` narrowing과 기존 실행·버퍼링 규칙을 유지합니다.
+
+각 공개 entry는 ESM과 declaration export 조건을 제공합니다. 쿼리 타입은 root에서
+`import type`으로 가져오세요. `/functional`·`/core-symbols`·`/dist/index.js`·
+`/operators/where` 같은 내부 경로는 공개 export가 아닙니다. 런타임 의존성은
+없습니다. 생성자·terminal·operator·전체 체인의 실제 출력 크기와 import graph는
+저장소의 `bench/modular-results.md`와 JSON artifact에서 확인할 수 있습니다.
+`sideEffects: false` 설정만으로 소비 번들이 작아졌다고 판단하지 않습니다.

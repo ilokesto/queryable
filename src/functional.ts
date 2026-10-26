@@ -1,7 +1,7 @@
 import {
   COUNT, ENTRIES, FIND, FIRST, LAZY, LIMIT, MAP, PICK, REDUCE,
   SOME, SORT, TO_OBJECT, VALUES, WHERE,
-} from "./index.js";
+} from "./core-symbols.js";
 import type { Queryable, QuerySequence, Truthy } from "./index.js";
 
 type Mapped<Q, U> = Q extends Queryable<unknown> ? Queryable<U> : QuerySequence<U>;
