@@ -3,6 +3,8 @@ import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
+export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
