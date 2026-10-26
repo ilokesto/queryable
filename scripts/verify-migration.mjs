@@ -134,10 +134,22 @@ export function validateManifest(manifest) {
   return manifest;
 }
 
-async function repositoryBoundary(repo) {
+export async function repositoryBoundary(repo) {
   const root = await realpath(repo);
   const common = await realpath(await text(repo, ['rev-parse', '--path-format=absolute', '--git-common-dir']));
-  invariant(common === path.join(root, '.git'), 'EXTERNAL_OBJECT_STORE', common);
+  if (common !== path.join(root, '.git')) {
+    const directory = await realpath(await text(repo, ['rev-parse', '--path-format=absolute', '--git-dir']));
+    const pointer = path.join(root, '.git');
+    // A linked worktree must be registered in the common store and point back to this checkout.
+    invariant(
+      path.basename(common) === '.git'
+        && path.dirname(directory) === path.join(common, 'worktrees')
+        && (await lstat(pointer)).isFile(),
+      'EXTERNAL_OBJECT_STORE', common,
+    );
+    const backlink = (await readFile(path.join(directory, 'gitdir'), 'utf8')).trim();
+    invariant(await realpath(path.resolve(directory, backlink)) === pointer, 'EXTERNAL_OBJECT_STORE', common);
+  }
   for (const file of ['objects/info/alternates', 'objects/info/http-alternates', 'shallow', 'info/grafts']) {
     invariant(!await exists(path.join(common, file)), 'EXTERNAL_OBJECT_STORE', file);
   }
