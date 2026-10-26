@@ -10,6 +10,6 @@
 - Package commands are exposed from the repository root as `docs:build`,
   `docs:typecheck`, `docs:test`, `docs:start`, and
   `docs:publication:verify`; `docs:http <origin>` checks the emitted local
-  origin. Run them under Node 22 and pnpm 10.17.1.
+  origin. Run them under Node 24 (the root `.nvmrc`) and pnpm 10.17.1.
 - Browser proof is local-only. Never deploy this workspace or invoke a
   publisher.

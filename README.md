@@ -50,7 +50,7 @@ const names = users
 <details>
 <summary>Development</summary>
 
-Use Node 22 and pnpm 10.17.1 from this repository.
+Use Node 24 (see `.nvmrc`) and pnpm 10.17.1 from this repository.
 
 ```sh
 pnpm typecheck
