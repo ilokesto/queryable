@@ -3,6 +3,8 @@ import type { NumericStats } from "./aggregation.js";
 
 export { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM } from "./aggregation.js";
 export type { NumericStats } from "./aggregation.js";
+export { FINALIZE, ON_COMPLETE } from "./lifetime.js";
+export type { ConsumptionOutcome } from "./lifetime.js";
 
 import {
   AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE,
