@@ -1,3 +1,10 @@
+import {
+  DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE,
+  dropLastEntries, dropWhileEntries, skipEntries, takeLastEntries, takeWhileEntries,
+} from "./bounds.js";
+
+export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -126,6 +133,27 @@ interface Operations<T, M extends Mode> extends Terminals<T> {
    * @example query[LIMIT](3)
    */
   [LIMIT](this: Result<T, M>, n: number): Result<T, M>;
+  /** Skip a nonnegative truncated size; NaN and negative sizes mean zero.
+   * @example query[SKIP](2)[LIMIT](3)
+   */
+  [SKIP](this: Result<T, M>, n: number): Result<T, M>;
+  /** Keep the matching prefix, stopping at the first false predicate.
+   * @example query[TAKE_WHILE](value => value.active)
+   */
+  [TAKE_WHILE]<S extends T>(this: Result<T, M>, predicate: (value: T, key: string) => value is S): Result<S, M>;
+  [TAKE_WHILE](this: Result<T, M>, predicate: (value: T, key: string) => boolean): Result<T, M>;
+  /** Drop only the matching prefix; does not narrow the remaining values.
+   * @example query[DROP_WHILE](value => value.active)
+   */
+  [DROP_WHILE](this: Result<T, M>, predicate: (value: T, key: string) => boolean): Result<T, M>;
+  /** Keep the final size entries; buffers at most size entries until exhaustion.
+   * @example query[TAKE_LAST](2)
+   */
+  [TAKE_LAST](this: Result<T, M>, n: number): Result<T, M>;
+  /** Drop the final size entries using bounded lookahead.
+   * @example query[DROP_LAST](2)
+   */
+  [DROP_LAST](this: Result<T, M>, n: number): Result<T, M>;
   /** Eagerly materialize groups; a possible group key may still be absent.
    * @example query[GROUP_BY](value => value.active ? "yes" : "no")
    */
@@ -294,6 +322,12 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
   return fromEntries(filterEntries(recordEntries(this), predicate));
 }
 
+function takeWhile<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
+function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T>;
+function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T> {
+  return fromEntries(takeWhileEntries(recordEntries(this), predicate));
+}
+
 const queryablePrototype = {
   ...terminals,
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
@@ -317,6 +351,19 @@ const queryablePrototype = {
   },
   [LIMIT]<T>(this: Queryable<T>, n: number): Queryable<T> {
     return fromEntries(limitEntries(recordEntries(this), n));
+  },
+  [SKIP]<T>(this: Queryable<T>, n: number): Queryable<T> {
+    return fromEntries(skipEntries(recordEntries(this), n));
+  },
+  [TAKE_WHILE]: takeWhile,
+  [DROP_WHILE]<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T> {
+    return fromEntries(dropWhileEntries(recordEntries(this), predicate));
+  },
+  [TAKE_LAST]<T>(this: Queryable<T>, n: number): Queryable<T> {
+    return fromEntries(takeLastEntries(recordEntries(this), n));
+  },
+  [DROP_LAST]<T>(this: Queryable<T>, n: number): Queryable<T> {
+    return fromEntries(dropLastEntries(recordEntries(this), n));
   },
   [GROUP_BY]<T, K extends string>(this: Queryable<T>, keyFn: (value: T, key: string) => K): Partial<Record<K, Queryable<T>>> {
     const groups: Partial<Record<K, Queryable<T>>> = Object.create(null);
@@ -364,6 +411,23 @@ class Sequence<T> implements QuerySequence<T> {
   }
   [LIMIT](n: number): QuerySequence<T> {
     return this.next(defer(limitEntries, this.source, n));
+  }
+  [SKIP](n: number): QuerySequence<T> {
+    return this.next(defer(skipEntries, this.source, n));
+  }
+  [TAKE_WHILE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
+  [TAKE_WHILE](predicate: (value: T, key: string) => boolean): QuerySequence<T>;
+  [TAKE_WHILE](predicate: (value: T, key: string) => boolean): QuerySequence<T> {
+    return this.next(defer(takeWhileEntries, this.source, predicate));
+  }
+  [DROP_WHILE](predicate: (value: T, key: string) => boolean): QuerySequence<T> {
+    return this.next(defer(dropWhileEntries, this.source, predicate));
+  }
+  [TAKE_LAST](n: number): QuerySequence<T> {
+    return this.next(defer(takeLastEntries, this.source, n));
+  }
+  [DROP_LAST](n: number): QuerySequence<T> {
+    return this.next(defer(dropLastEntries, this.source, n));
   }
   [GROUP_BY]<K extends string>(keyFn: (value: T, key: string) => K): Partial<Record<K, QuerySequence<T>>> {
     const entries: Partial<Record<K, Entry<T>[]>> = Object.create(null);
