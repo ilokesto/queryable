@@ -44,11 +44,11 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.equal(packed.manifest.version, '0.0.1');
   assert.equal(packed.manifest.publishConfig.access, 'public');
   assert.deepEqual(packed.manifest.dependencies ?? {}, {});
-  for (const file of ['dist/index.js', 'dist/index.d.ts']) {
+  for (const file of ['dist/index.js', 'dist/index.d.ts', 'dist/streams.js', 'dist/streams.d.ts']) {
     assert.ok((await readFile(path.join(installed, file))).length > 0, file);
   }
 
-  const program = ts.createProgram([path.join(consumer, 'consumer.ts')], {
+  const program = ts.createProgram(['consumer.ts', 'streams.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -57,6 +57,16 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.equal(emitted.diagnostics.length, 0, format(emitted.diagnostics));
   assert.ok((await readFile(path.join(consumer, 'dist/consumer.d.ts'))).length > 0);
   await exec(process.execPath, ['runtime.mjs'], { cwd: consumer });
+  await exec(process.execPath, ['streams-runtime.mjs'], { cwd: consumer });
+  await exec(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    globalThis.EventTarget = undefined;
+    globalThis.ReadableStream = undefined;
+    const root = await import('@ilokesto/queryable');
+    assert.equal('fromReadableStream' in root, false);
+    const streams = await import('@ilokesto/queryable/streams');
+    assert.equal(typeof streams.fromEventTarget, 'function');
+  `], { cwd: consumer });
 
   const downstream = ts.createProgram([path.join(consumer, 'downstream.ts')], { ...options, noEmit: true });
   const downstreamDiagnostics = ts.getPreEmitDiagnostics(downstream);

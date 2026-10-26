@@ -15,6 +15,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./streams": {
+      "types": "./dist/streams.d.ts",
+      "import": "./dist/streams.js"
     }
   },
   "files": ["dist"],
