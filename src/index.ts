@@ -1,3 +1,10 @@
+import {
+  DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY,
+  distinctEntries, distinctUntilChangedEntries, identity,
+} from "./distinct.js";
+
+export { DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY } from "./distinct.js";
+
 import { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM, numericStats, reduceBy } from "./aggregation.js";
 import type { NumericStats } from "./aggregation.js";
 
@@ -164,6 +171,14 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T> {
+  /** Keep the first entry for each value, using SameValueZero/reference identity. */
+  [DISTINCT](this: Result<T, M>): Result<T, M>;
+  /** Keep the first entry for each selected value; selectors receive original keys. */
+  [DISTINCT_BY]<K>(this: Result<T, M>, select: (value: T, key: string) => K): Result<T, M>;
+  /** Keep the first entry of each adjacent run of equal values. */
+  [DISTINCT_UNTIL_CHANGED](this: Result<T, M>): Result<T, M>;
+  /** Keep the first entry of each adjacent run of equal selected values. */
+  [DISTINCT_UNTIL_CHANGED_BY]<K>(this: Result<T, M>, select: (value: T, key: string) => K): Result<T, M>;
   [GROUP_BY_MAP]<K>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Map<K, Result<T, M>>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
@@ -471,6 +486,18 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [DISTINCT]<T>(this: Queryable<T>): Queryable<T> {
+    return fromEntries(distinctEntries(recordEntries(this), identity));
+  },
+  [DISTINCT_BY]<T, K>(this: Queryable<T>, select: (value: T, key: string) => K): Queryable<T> {
+    return fromEntries(distinctEntries(recordEntries(this), select));
+  },
+  [DISTINCT_UNTIL_CHANGED]<T>(this: Queryable<T>): Queryable<T> {
+    return fromEntries(distinctUntilChangedEntries(recordEntries(this), identity));
+  },
+  [DISTINCT_UNTIL_CHANGED_BY]<T, K>(this: Queryable<T>, select: (value: T, key: string) => K): Queryable<T> {
+    return fromEntries(distinctUntilChangedEntries(recordEntries(this), select));
+  },
   [GROUP_BY_MAP]<T, K>(this: Queryable<T>, keyFn: (value: T, key: string) => K): Map<K, Queryable<T>> {
     const groups = new Map<K, Queryable<T>>();
     for (const [key, value] of recordEntries(this)) {
@@ -544,6 +571,19 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [DISTINCT](): QuerySequence<T> {
+    return this.next(defer(distinctEntries, this.source, identity<T>));
+  }
+  [DISTINCT_BY]<K>(select: (value: T, key: string) => K): QuerySequence<T> {
+    return this.next(defer(distinctEntries, this.source, select));
+  }
+  [DISTINCT_UNTIL_CHANGED](): QuerySequence<T> {
+    return this.next(defer(distinctUntilChangedEntries, this.source, identity<T>));
+  }
+  [DISTINCT_UNTIL_CHANGED_BY]<K>(select: (value: T, key: string) => K): QuerySequence<T> {
+    return this.next(defer(distinctUntilChangedEntries, this.source, select));
   }
 
   [GROUP_BY_MAP]<K>(keyFn: (value: T, key: string) => K): Map<K, QuerySequence<T>> {
