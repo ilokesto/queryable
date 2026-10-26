@@ -1,0 +1,959 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-10-26T05:05:15.625Z",
+  "runtime": {
+    "node": "v24.22.1",
+    "v8": "13.6.233.17-node.58",
+    "esbuild": "0.28.2"
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "27.2.0",
+    "cpu": "Apple M4 Pro"
+  },
+  "settings": {
+    "bundle": true,
+    "minify": true,
+    "treeShaking": true,
+    "platform": "browser",
+    "format": "esm",
+    "target": "es2023",
+    "legalComments": "none",
+    "write": false,
+    "metafile": true
+  },
+  "methodology": "one fresh in-memory build per fixture; whole minified ESM consumer and level-9 gzip bytes; separate combined provider validates execution; no size thresholds",
+  "limits": "terminal/operator receive an existing query: provider cost is excluded there; constructor/chain include the complete shared prototype; not runtime timing, heap, tarball size, or a claim about duplicated package installations",
+  "results": [
+    {
+      "entry": "root",
+      "case": "constructor",
+      "source": "import { createQueryable } from \"@ilokesto/queryable\"; export const run = createQueryable;",
+      "validated": true,
+      "minifiedBytes": 11579,
+      "gzipBytes": 3802,
+      "includedInputs": [
+        {
+          "path": "dist/ordering.js",
+          "bytesInOutput": 1967
+        },
+        {
+          "path": "dist/stateful.js",
+          "bytesInOutput": 372
+        },
+        {
+          "path": "dist/distinct.js",
+          "bytesInOutput": 352
+        },
+        {
+          "path": "dist/aggregation.js",
+          "bytesInOutput": 533
+        },
+        {
+          "path": "dist/lookup.js",
+          "bytesInOutput": 991
+        },
+        {
+          "path": "dist/bounds.js",
+          "bytesInOutput": 724
+        },
+        {
+          "path": "dist/fusion.js",
+          "bytesInOutput": 942
+        },
+        {
+          "path": "dist/index.js",
+          "bytesInOutput": 5670
+        },
+        {
+          "path": "consumer-root-constructor.mjs",
+          "bytesInOutput": 9
+        }
+      ],
+      "importGraph": [
+        {
+          "path": "dist/predicates.js",
+          "imports": []
+        },
+        {
+          "path": "dist/ordering.js",
+          "imports": []
+        },
+        {
+          "path": "dist/stateful.js",
+          "imports": []
+        },
+        {
+          "path": "dist/distinct.js",
+          "imports": []
+        },
+        {
+          "path": "dist/aggregation.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lifetime.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lookup.js",
+          "imports": []
+        },
+        {
+          "path": "dist/bounds.js",
+          "imports": []
+        },
+        {
+          "path": "dist/entries.js",
+          "imports": []
+        },
+        {
+          "path": "dist/fusion.js",
+          "imports": []
+        },
+        {
+          "path": "dist/functional.js",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/async.js",
+          "imports": [
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/index.js",
+          "imports": [
+            {
+              "path": "dist/predicates.js",
+              "kind": "import-statement",
+              "original": "./predicates.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/fusion.js",
+              "kind": "import-statement",
+              "original": "./fusion.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/functional.js",
+              "kind": "import-statement",
+              "original": "./functional.js"
+            },
+            {
+              "path": "dist/async.js",
+              "kind": "import-statement",
+              "original": "./async.js"
+            }
+          ]
+        },
+        {
+          "path": "consumer-root-constructor.mjs",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "@ilokesto/queryable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "root",
+      "case": "terminal",
+      "source": "import { values } from \"@ilokesto/queryable\"; export const run = values;",
+      "validated": true,
+      "minifiedBytes": 11611,
+      "gzipBytes": 3808,
+      "includedInputs": [
+        {
+          "path": "dist/ordering.js",
+          "bytesInOutput": 1967
+        },
+        {
+          "path": "dist/stateful.js",
+          "bytesInOutput": 372
+        },
+        {
+          "path": "dist/distinct.js",
+          "bytesInOutput": 352
+        },
+        {
+          "path": "dist/aggregation.js",
+          "bytesInOutput": 533
+        },
+        {
+          "path": "dist/lookup.js",
+          "bytesInOutput": 991
+        },
+        {
+          "path": "dist/bounds.js",
+          "bytesInOutput": 723
+        },
+        {
+          "path": "dist/fusion.js",
+          "bytesInOutput": 942
+        },
+        {
+          "path": "dist/functional.js",
+          "bytesInOutput": 30
+        },
+        {
+          "path": "dist/index.js",
+          "bytesInOutput": 5672
+        },
+        {
+          "path": "consumer-root-terminal.mjs",
+          "bytesInOutput": 10
+        }
+      ],
+      "importGraph": [
+        {
+          "path": "dist/predicates.js",
+          "imports": []
+        },
+        {
+          "path": "dist/ordering.js",
+          "imports": []
+        },
+        {
+          "path": "dist/stateful.js",
+          "imports": []
+        },
+        {
+          "path": "dist/distinct.js",
+          "imports": []
+        },
+        {
+          "path": "dist/aggregation.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lifetime.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lookup.js",
+          "imports": []
+        },
+        {
+          "path": "dist/bounds.js",
+          "imports": []
+        },
+        {
+          "path": "dist/entries.js",
+          "imports": []
+        },
+        {
+          "path": "dist/fusion.js",
+          "imports": []
+        },
+        {
+          "path": "dist/functional.js",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/async.js",
+          "imports": [
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/index.js",
+          "imports": [
+            {
+              "path": "dist/predicates.js",
+              "kind": "import-statement",
+              "original": "./predicates.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/fusion.js",
+              "kind": "import-statement",
+              "original": "./fusion.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/functional.js",
+              "kind": "import-statement",
+              "original": "./functional.js"
+            },
+            {
+              "path": "dist/async.js",
+              "kind": "import-statement",
+              "original": "./async.js"
+            }
+          ]
+        },
+        {
+          "path": "consumer-root-terminal.mjs",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "@ilokesto/queryable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "root",
+      "case": "operator",
+      "source": "import { where } from \"@ilokesto/queryable\"; export const run = where(n => n > 1);",
+      "validated": true,
+      "minifiedBytes": 11642,
+      "gzipBytes": 3824,
+      "includedInputs": [
+        {
+          "path": "dist/ordering.js",
+          "bytesInOutput": 1967
+        },
+        {
+          "path": "dist/stateful.js",
+          "bytesInOutput": 372
+        },
+        {
+          "path": "dist/distinct.js",
+          "bytesInOutput": 352
+        },
+        {
+          "path": "dist/aggregation.js",
+          "bytesInOutput": 533
+        },
+        {
+          "path": "dist/lookup.js",
+          "bytesInOutput": 991
+        },
+        {
+          "path": "dist/bounds.js",
+          "bytesInOutput": 724
+        },
+        {
+          "path": "dist/fusion.js",
+          "bytesInOutput": 942
+        },
+        {
+          "path": "dist/functional.js",
+          "bytesInOutput": 53
+        },
+        {
+          "path": "dist/index.js",
+          "bytesInOutput": 5671
+        },
+        {
+          "path": "consumer-root-operator.mjs",
+          "bytesInOutput": 18
+        }
+      ],
+      "importGraph": [
+        {
+          "path": "dist/predicates.js",
+          "imports": []
+        },
+        {
+          "path": "dist/ordering.js",
+          "imports": []
+        },
+        {
+          "path": "dist/stateful.js",
+          "imports": []
+        },
+        {
+          "path": "dist/distinct.js",
+          "imports": []
+        },
+        {
+          "path": "dist/aggregation.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lifetime.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lookup.js",
+          "imports": []
+        },
+        {
+          "path": "dist/bounds.js",
+          "imports": []
+        },
+        {
+          "path": "dist/entries.js",
+          "imports": []
+        },
+        {
+          "path": "dist/fusion.js",
+          "imports": []
+        },
+        {
+          "path": "dist/functional.js",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/async.js",
+          "imports": [
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/index.js",
+          "imports": [
+            {
+              "path": "dist/predicates.js",
+              "kind": "import-statement",
+              "original": "./predicates.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/fusion.js",
+              "kind": "import-statement",
+              "original": "./fusion.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/functional.js",
+              "kind": "import-statement",
+              "original": "./functional.js"
+            },
+            {
+              "path": "dist/async.js",
+              "kind": "import-statement",
+              "original": "./async.js"
+            }
+          ]
+        },
+        {
+          "path": "consumer-root-operator.mjs",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "@ilokesto/queryable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "entry": "root",
+      "case": "chain",
+      "source": "import { createQueryable } from \"@ilokesto/queryable\"; import { pipe, lazy, where, map, limit, values } from \"@ilokesto/queryable\"; export const run = input => pipe(pipe(createQueryable(input), lazy, where(n => n > 1), map(n => n * 10)), limit(1), values);",
+      "validated": true,
+      "minifiedBytes": 11948,
+      "gzipBytes": 3922,
+      "includedInputs": [
+        {
+          "path": "dist/ordering.js",
+          "bytesInOutput": 1967
+        },
+        {
+          "path": "dist/stateful.js",
+          "bytesInOutput": 372
+        },
+        {
+          "path": "dist/distinct.js",
+          "bytesInOutput": 352
+        },
+        {
+          "path": "dist/aggregation.js",
+          "bytesInOutput": 533
+        },
+        {
+          "path": "dist/lookup.js",
+          "bytesInOutput": 993
+        },
+        {
+          "path": "dist/bounds.js",
+          "bytesInOutput": 728
+        },
+        {
+          "path": "dist/fusion.js",
+          "bytesInOutput": 942
+        },
+        {
+          "path": "dist/functional.js",
+          "bytesInOutput": 319
+        },
+        {
+          "path": "dist/index.js",
+          "bytesInOutput": 5667
+        },
+        {
+          "path": "consumer-root-chain.mjs",
+          "bytesInOutput": 56
+        }
+      ],
+      "importGraph": [
+        {
+          "path": "dist/predicates.js",
+          "imports": []
+        },
+        {
+          "path": "dist/ordering.js",
+          "imports": []
+        },
+        {
+          "path": "dist/stateful.js",
+          "imports": []
+        },
+        {
+          "path": "dist/distinct.js",
+          "imports": []
+        },
+        {
+          "path": "dist/aggregation.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lifetime.js",
+          "imports": []
+        },
+        {
+          "path": "dist/lookup.js",
+          "imports": []
+        },
+        {
+          "path": "dist/bounds.js",
+          "imports": []
+        },
+        {
+          "path": "dist/entries.js",
+          "imports": []
+        },
+        {
+          "path": "dist/fusion.js",
+          "imports": []
+        },
+        {
+          "path": "dist/functional.js",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/async.js",
+          "imports": [
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "./index.js"
+            }
+          ]
+        },
+        {
+          "path": "dist/index.js",
+          "imports": [
+            {
+              "path": "dist/predicates.js",
+              "kind": "import-statement",
+              "original": "./predicates.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/ordering.js",
+              "kind": "import-statement",
+              "original": "./ordering.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/stateful.js",
+              "kind": "import-statement",
+              "original": "./stateful.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/distinct.js",
+              "kind": "import-statement",
+              "original": "./distinct.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/aggregation.js",
+              "kind": "import-statement",
+              "original": "./aggregation.js"
+            },
+            {
+              "path": "dist/lifetime.js",
+              "kind": "import-statement",
+              "original": "./lifetime.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/lookup.js",
+              "kind": "import-statement",
+              "original": "./lookup.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/bounds.js",
+              "kind": "import-statement",
+              "original": "./bounds.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/fusion.js",
+              "kind": "import-statement",
+              "original": "./fusion.js"
+            },
+            {
+              "path": "dist/entries.js",
+              "kind": "import-statement",
+              "original": "./entries.js"
+            },
+            {
+              "path": "dist/functional.js",
+              "kind": "import-statement",
+              "original": "./functional.js"
+            },
+            {
+              "path": "dist/async.js",
+              "kind": "import-statement",
+              "original": "./async.js"
+            }
+          ]
+        },
+        {
+          "path": "consumer-root-chain.mjs",
+          "imports": [
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "@ilokesto/queryable"
+            },
+            {
+              "path": "dist/index.js",
+              "kind": "import-statement",
+              "original": "@ilokesto/queryable"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

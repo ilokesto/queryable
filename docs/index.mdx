@@ -659,3 +659,49 @@ after early return or failure. For example, a hook after `LIMIT(1)` sees that
 limited stage complete; a hook before it sees early return. No hook or source
 runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
 shared and frozen, with fresh execution state on each consumption.
+
+## Modular imports and bundle boundaries
+
+The ESM-only package exposes the existing root plus two explicit subpaths:
+
+| Entry | Exports | Runtime boundary |
+| --- | --- | --- |
+| `@ilokesto/queryable` | All existing constructors, Symbols, adapters, and types | Constructors retain the complete shared prototype |
+| `@ilokesto/queryable/operators` | `compose`, `count`, `entries`, `find`, `first`, `lazy`, `limit`, `map`, `pick`, `pipe`, `reduce`, `some`, `sort`, `toObject`, `values`, `where` | Existing synchronous adapters and core Symbols only; no root or async implementation import |
+| `@ilokesto/queryable/symbols` | All public operation Symbols | Reexports their single definitions from core and family modules; no query constructors |
+
+```ts
+import type { QuerySequence } from "@ilokesto/queryable";
+import { map, pipe, values, where } from "@ilokesto/queryable/operators";
+import { VALUES } from "@ilokesto/queryable/symbols";
+
+export function doubled(query: QuerySequence<number>): number[] {
+  return pipe(query, where((n: number) => n > 1), map((n: number) => n * 2), values);
+}
+
+export function read(query: QuerySequence<number>): number[] {
+  return query[VALUES]();
+}
+```
+
+These consumers receive an existing query. Creating that query with a root
+constructor still pays for the full shared prototype: choosing operator imports
+does not make a whole constructor-and-chain consumer operator-sized. The
+`symbols` entry also loads its family modules in native ESM; it is not a
+promise of one module per Symbol. Bundlers can remove unused exports.
+
+Root and subpath imports within one resolved package instance share exactly the
+same Symbols and adapter functions. Record and sequence methods retain their
+existing shared identities. Import order does not change this contract.
+Independently bundled or separately installed copies are separate instances;
+Symbols are not registered globally. `where`/`find` keep type-guard, `Boolean`,
+and literal-`false` narrowing, and all existing execution and buffering rules
+remain in effect.
+
+Each public entry supplies ESM and declaration export conditions. Import query
+types from the root with `import type`; private paths such as `/functional`,
+`/core-symbols`, `/dist/index.js`, and `/operators/where` are not public exports.
+Runtime dependencies remain empty. See `bench/modular-results.md` and its JSON
+artifacts in the repository for measured constructor, terminal, operator, and
+complete-chain output sizes and import graphs; `sideEffects: false` alone is
+not evidence of a smaller consumer.
