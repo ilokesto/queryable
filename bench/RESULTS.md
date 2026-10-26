@@ -1,12 +1,14 @@
 # Local benchmark results
 
-Measured on **2026-10-15** using the final implementation in this working tree.
+Historical measurements recorded on **2026-10-15** for the original 12-case suite.
+These results do not cover the mechanism workloads or consumer bundles added
+later. Re-run the commands in `README.md` on Node 24 for current measurements.
 The complete machine metadata, raw samples, checksums, and counters are preserved
 in [results.json](./results.json). This is one local run, not a cross-runtime
 performance guarantee.
 
 ```sh
-pnpm --filter @ilokesto/queryable bench
+pnpm bench
 ```
 
 Environment: Apple M2 Max, arm64, Darwin 27.2.0, 32 GiB RAM; Node v26.7.0,
