@@ -48,7 +48,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     assert.ok((await readFile(path.join(installed, file))).length > 0, file);
   }
 
-  const program = ts.createProgram([path.join(consumer, 'consumer.ts')], {
+  const program = ts.createProgram(['consumer.ts', 'functional.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -57,8 +57,22 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.equal(emitted.diagnostics.length, 0, format(emitted.diagnostics));
   assert.ok((await readFile(path.join(consumer, 'dist/consumer.d.ts'))).length > 0);
   await exec(process.execPath, ['runtime.mjs'], { cwd: consumer });
+  await exec(process.execPath, ['dist/functional.js'], { cwd: consumer });
 
-  const downstream = ts.createProgram([path.join(consumer, 'downstream.ts')], { ...options, noEmit: true });
+  await writeFile(path.join(consumer, 'functional-downstream.ts'), [
+    'import { narrowed, mapped, ordered, deferred, transform, nativeResult, found } from "./dist/functional.js";',
+    'import type { Queryable, QuerySequence } from "@ilokesto/queryable";',
+    'export const record: Queryable<string> = narrowed;',
+    'export const numbers: Queryable<number> = mapped;',
+    'export const sequence: QuerySequence<number> = ordered;',
+    'export const live: QuerySequence<string | number> = deferred;',
+    'export const reuse: (query: Queryable<string | number>) => number[] = transform;',
+    'export const native: boolean = nativeResult;',
+    'export const lookup: number | undefined = found;',
+  ].join('\n'));
+  const downstream = ts.createProgram([
+    path.join(consumer, 'downstream.ts'), path.join(consumer, 'functional-downstream.ts'),
+  ], { ...options, noEmit: true });
   const downstreamDiagnostics = ts.getPreEmitDiagnostics(downstream);
   assert.equal(downstreamDiagnostics.length, 0, format(downstreamDiagnostics));
 

@@ -3,6 +3,10 @@ import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export {
+  compose, count, entries, find, first, lazy, limit, map, pick, pipe,
+  reduce, some, sort, toObject, values, where,
+} from "./functional.js";
 
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
