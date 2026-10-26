@@ -505,6 +505,187 @@ order, buffering, short-circuiting, and exact thrown values are unchanged.
 Each lazy consumption starts fresh and sees the live source. Callbacks and
 explicit accumulator objects remain caller-owned.
 
+## Readonly shape snapshots
+
+`createShapeQueryable(input, keys)` is an opt-in, eager `ShapeQueryable<S>` view
+for heterogeneous records. The explicit string-key whitelist is required:
+TypeScript object types are open, so an object typed as `{ count: number }` can
+also have other runtime properties. Only requested, own, enumerable string keys
+are copied, in the input's native object order. Duplicate requests are ignored.
+Use string keys, including quoted numeric keys such as `"2"`; Symbol keys are
+not part of the shape.
+
+```ts
+import { createShapeQueryable, ENTRIES, PICK, MAP, WHERE, TO_OBJECT } from "@ilokesto/queryable";
+
+const input: { count: number; label: string; optional?: boolean } = {
+  count: 1, label: "one",
+};
+const snapshot = createShapeQueryable(input, ["count", "label", "optional"]);
+for (const [key, value] of snapshot[ENTRIES]()) {
+  if (key === "count") value.toFixed(); // number
+  if (key === "label") value.toUpperCase(); // string
+}
+snapshot[PICK]("optional")[TO_OBJECT](); // {}; optional is boolean | undefined
+snapshot[PICK]("unknown")[ENTRIES](); // []; element type is never
+snapshot[MAP](String)[PICK]("count")[TO_OBJECT](); // { count: "1" }
+snapshot[WHERE](value => typeof value === "number")[TO_OBJECT](); // { count: 1 }
+```
+
+The view exposes `COUNT`, `FIRST`, `VALUES`, `ENTRIES`, `TO_OBJECT`, `PICK`, `MAP`,
+and `WHERE` through shared, frozen Symbol methods. It has no direct record
+properties. `MAP` and `WHERE` execute immediately with `(value, originalKey)` in
+record order and propagate callback errors unchanged. `PICK` uses argument order
+subject to native integer-key ordering, ignores missing and duplicate keys, and
+keeps stored `undefined`. Empty inputs invoke no callbacks: count is zero, first
+is `undefined`, and containers are empty.
+
+The snapshot, its extracted arrays and tuples, and its extracted ordinary objects
+are shallowly frozen. Each terminal creates a fresh container; `ENTRIES` may share
+its already frozen tuples. Input objects and nested values are **not** frozen.
+Replacing or deleting an input property does not change the snapshot, but nested
+objects remain shared references. Methods require their receiver. Nested values
+are neither cloned nor made deeply readonly.
+
+All object output properties are optional, even for required input properties:
+static types do not prove own enumerable presence. `FIRST` always includes
+`undefined`; no chain claims to be nonempty. A bounded `PICK` retains only the
+intersection of requested keys and the snapshot's domain. A broad `string` request
+keeps the possible original domain, never invents an arbitrary key, and still
+does not guarantee presence. Optional values retain their `undefined` possibility;
+use `COUNT` or own-property checks to distinguish a stored `undefined` from absence.
+
+`ShapeQueryable<S>` describes the initial object shape; chain results use the
+exported `ShapeSnapshot<E>` type, where `E` is the possible entry tuple union.
+`ENTRIES` preserves that key/value tuple union. `MAP` retains the key domain but
+assigns its callback's inferred result type to every possible key; it does not
+pretend to infer a different return type per key. A `WHERE` type guard intersects
+each existing value type with the guard's type, including literal guards against
+broader values. A boolean predicate preserves the possible value types and can
+remove any key. Callback parameters are value and key unions; use `ENTRIES` when
+key-based control-flow narrowing is needed.
+
+The mutable `Queryable<T>` API is unchanged. To use its other operations, pass
+`snapshot[TO_OBJECT]()` to `createQueryable`; that creates a new mutable record
+and deliberately gives up closed-shape guarantees. Shape snapshots do not add
+memoization or alter the existing live `LAZY` contract.
+
+## Combining sources
+
+`CONCAT(sources, options?)` appends queries in array order, retaining their keys.
+The receiver comes first; a later source is acquired only when its first entry
+is demanded. `FLAT_MAP(mapper, options?)` calls `mapper(value, originalKey)` in
+source order and drains each returned iterable before advancing the source.
+The mapper emits explicit `[stringKey, value]` tuples, not unkeyed values:
+original keys remain available as callback context, while emitted keys define
+output identity. No payload fields are inspected or used to invent keys.
+
+Both accept the same `{ duplicateKeys: "error" | "first" | "last" }` option
+and share the factory identity boundary described above. The default rejects
+collisions, including through `ENTRIES`, `TO_OBJECT`, and `PICK`; `"last"`
+buffers before producing any entry. Input queries retain their own identity
+policies before the combined output policy applies.
+
+`ZIP(...queries)` pairs positions into an inferred heterogeneous tuple and uses
+the receiver's key. Each row pulls the receiver, then arguments left to right.
+The first exhausted input ends the result: earlier inputs may have supplied
+one unmatched value in that final round, while later inputs are not pulled.
+An empty receiver does not acquire later inputs. With no arguments, ZIP emits
+one-element tuples.
+
+All three return sequences because rows can expand or combine. They retain the
+receiver's evaluation mode: records and eager ordered sequences materialize at
+the call; lazy receivers defer work, stay live and repeatable, and acquire fresh
+iterators on every consumption. An empty expansion produces no entries, and no
+mapper runs for empty input. `LIMIT(0)` on a lazy result acquires nothing.
+Acquired iterators close on exhaustion, shortest termination, early return, and
+factory, `next`, or callback failure, including nested and sibling iterators.
+Cleanup attempts every acquired iterator; a primary failure is never replaced
+by a cleanup failure. Without a primary failure, the first cleanup failure
+propagates. Entry tuples and ZIP row tuples are fresh; payload references remain
+shallow.
+
+```ts
+import {
+  createQueryable, CONCAT, ZIP, FLAT_MAP, LAZY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({ a: 1, b: 2 });
+left[LAZY]()[CONCAT]([createQueryable({ c: 3 })])[VALUES](); // [1, 2, 3]
+left[ZIP](createQueryable({ x: "one" }))[ENTRIES](); // [["a", [1, "one"]]]
+left[FLAT_MAP]((value, key) => [
+  [`${key}:original`, value],
+  [`${key}:double`, value * 2],
+])[ENTRIES](); // [["a:original", 1], ["a:double", 2], ["b:original", 2], ["b:double", 4]]
+```
+
+## Local entry buffers and adjacent groups
+
+These shared Symbol methods return ordered `QuerySequence` results. Each result
+key is the original key of its first included entry (its anchor), never a
+generated index or a selector result. Unique input keys therefore give unique
+anchors, including numeric and special keys. Each value is a fresh mutable array
+of fresh `[originalKey, value]` tuples; nested values remain shallow references.
+Overlapping windows do not share exposed tuples. Later pulls and repeated
+consumption do not modify previously returned buffers, and editing an exposed
+buffer does not edit retained eager snapshots.
+
+| Method | Buffer policy |
+| --- | --- |
+| `[CHUNK](size)` | Nonoverlapping batches; include the final nonempty partial chunk |
+| `[WINDOW](size, stride = 1, partial = false)` | Start at positions `0, stride, 2 * stride, ...`; overlap when stride is smaller than size, skip gaps when larger; emit only full windows unless partial is true |
+| `[PAIRWISE]()` | Complete overlapping pairs; `EntryPair<T>` is exactly `[[string, T], [string, T]]` |
+| `[SPLIT]((value, originalKey) => boolean)` | Matching entries are delimiters and are excluded; leading, repeated, and trailing delimiters never produce empty groups |
+| `[PARTITION_BY]((value, originalKey) => selected)` | Emit consecutive runs of equal selector results; include the final nonempty run |
+
+`size` and `stride` must be positive finite integers; invalid arguments throw
+`RangeError` immediately, even on a lazy or empty query, before acquiring input.
+Empty input yields no buffers. A short input yields a partial CHUNK, no default
+WINDOW or PAIRWISE, and a partial WINDOW only when requested. With partial windows
+enabled, every start position before the end can yield a nonempty trailing
+window, including multiple shrinking overlapping tails.
+
+```ts
+import {
+  createQueryable, LAZY, CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+query[CHUNK](3)[ENTRIES]();
+// [["a", [["a", 1], ["b", 1], ["c", 2]]], ["d", [["d", 1]]]]
+query[WINDOW](2, 3, true)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[PAIRWISE]()[VALUES](); // three complete pairs of original entries
+query[LAZY]()[SPLIT](value => value === 2)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[LAZY]()[PARTITION_BY](value => value)[VALUES]();
+// [[["a", 1], ["b", 1]], [["c", 2]], [["d", 1]]]
+```
+
+PARTITION_BY uses the SameValueZero equality contract of Set-based DISTINCT_BY:
+`NaN` equals `NaN`, `-0` equals `0`, and objects and Symbols compare by identity.
+Stored `undefined` and an `undefined` selector result are ordinary data, not
+missing-state sentinels. `A,A,B,A` forms three runs, unlike eager GROUP_BY, which
+still collects all equal string group keys together.
+
+On records and eager sequences these methods execute immediately and return
+snapshots. After LAZY they defer execution, read the live source again on each
+consumption, and create independent buffer state without memoization. Callbacks
+run once per pulled entry in source order with `(value, originalKey)`. SPLIT
+reads through the delimiter ending a group. PARTITION_BY must select one entry
+past a run to discover its boundary; that entry starts the next run without a
+second selector call. At source exhaustion no extra callback runs. Early exit
+and callback or source failures close acquired upstream generators; errors
+propagate unchanged and the next consumption starts fresh.
+
+Lazy CHUNK/WINDOW retain at most `size` original entries internally; PAIRWISE
+retains one previous entry. Fresh emitted copies also cost space proportional to
+the emitted buffer. SPLIT and PARTITION_BY may retain an unbounded current group
+until a delimiter, a changed selector, or source exhaustion arrives; they cannot
+produce a group from an infinite uninterrupted run. These bounds exclude
+upstream identity tracking, buffering operators, and results retained by the
+consumer. Eager evaluation necessarily stores all resulting buffers.
+
 ### Async entry sources and Promise normalization
 
 `createAsyncQuerySequence(factory, options?)` is a separate, always-deferred
@@ -609,3 +790,53 @@ serialization representation. Existing string-keyed `GROUP_BY` remains unchanged
 Empty inputs return fresh empty collections. Factory-source duplicate policies
 still apply before these operations, so default duplicate keys throw rather
 than silently overwrite values in `TO_MAP`.
+
+## Async cancellation and lifetime hooks
+
+Pass `{ signal }` to `createAsyncQuerySequence`. The factory receives that signal;
+async `MAP`, `WHERE`, `FIND`, `SOME`, `GROUP_BY`, and the synchronous `SORT`
+comparator receive it after their existing arguments. It can be `undefined`.
+Callbacks and factories with fewer arguments continue to work.
+
+```ts
+import { createAsyncQuerySequence, FINALIZE, MAP, ON_COMPLETE, VALUES } from "@ilokesto/queryable";
+
+const controller = new AbortController();
+const query = createAsyncQuerySequence(
+  signal => [["a", signal?.aborted ? 0 : 1]],
+  { signal: controller.signal },
+)[MAP](async (value, key, signal) => value + key.length)
+  [ON_COMPLETE](() => { console.log("upstream exhausted"); })
+  [FINALIZE](outcome => { console.log(outcome.reason); });
+await query[VALUES](); // [2]
+```
+
+An already-aborted signal rejects with its exact `reason` before factory
+acquisition. Abort also interrupts pending factory, `next`, value, and callback
+waits. Each wait removes its abort listener when settled; late external
+rejections remain handled. A consumed sequence with the same aborted signal
+rejects again; create a new controller/query to start a new lifetime.
+Buffered SORT, negative LIMIT, `"last"` collision results, and snapshot groups
+check cancellation before each output, including after a comparator aborts.
+
+Cancellation stops consumption, not arbitrary external work. Pass the received
+signal to that work for cooperative cancellation. On abort, an acquired iterator's
+`return()` is attempted once without waiting for a non-cooperative pending
+`next()` to release its queue. Its later cleanup rejection cannot replace the
+abort reason. Other exits await iterator cleanup. Native async generators may
+therefore finish external cleanup later if their pending work ignores the signal.
+
+`FINALIZE((outcome, signal) => ...)` is awaited once per started consumption,
+including early return and error. `ConsumptionOutcome` is `"complete"` or
+`"return"`, or `"error"`/`"abort"` with an `error` field. This describes the
+hook's upstream stage: a downstream failure closes it as a return, while a
+failure inside its upstream is observable as an error. Place hooks accordingly.
+An existing upstream error/abort wins over a finalizer failure; without a primary
+failure, cleanup failure rejects the consumer. Finalizers must settle for the
+consumer to settle.
+
+`ON_COMPLETE(callback)` runs only after its own upstream exhausts normally, not
+after early return or failure. For example, a hook after `LIMIT(1)` sees that
+limited stage complete; a hook before it sees early return. No hook or source
+runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
+shared and frozen, with fresh execution state on each consumption.

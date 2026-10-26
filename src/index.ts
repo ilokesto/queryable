@@ -27,6 +27,8 @@ import type { NumericStats } from "./aggregation.js";
 
 export { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM } from "./aggregation.js";
 export type { NumericStats } from "./aggregation.js";
+export { FINALIZE, ON_COMPLETE } from "./lifetime.js";
+export type { ConsumptionOutcome } from "./lifetime.js";
 
 import {
   AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE,
@@ -44,6 +46,20 @@ export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js"
 
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { CONCAT, ZIP, FLAT_MAP, concatEntries, flatMapEntries, managedEntries, zipEntries } from "./combine.js";
+
+export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
+
+import {
+  CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY,
+  copyBuffer, copyPair, copyBuffers, windowEntries, pairEntries,
+  splitEntries, partitionEntries as adjacentGroupEntries, validateWindowSize,
+} from "./windows.js";
+import type { EntryBuffer, EntryPair, WindowOperations } from "./windows.js";
+
+export { CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY } from "./windows.js";
+export type { EntryBuffer, EntryPair, WindowEntry } from "./windows.js";
+
 import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
 export { DuplicateKeyError } from "./entries.js";
@@ -52,6 +68,8 @@ export {
   compose, count, entries, find, first, lazy, limit, map, pick, pipe,
   reduce, some, sort, toObject, values, where,
 } from "./functional.js";
+export { createShapeQueryable } from "./shape.js";
+export type { ShapeEntry, ShapeQueryable, ShapeSnapshot } from "./shape.js";
 export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
 export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 
@@ -130,6 +148,7 @@ export const REDUCE = Symbol("reduce");
 export const LAZY = Symbol("lazy");
 
 const ITERATE = Symbol("iterate");
+const COMBINE = Symbol("combine");
 type Entry<T> = readonly [string, T];
 type Mode = "record" | "sequence";
 type Result<T, M extends Mode> = M extends "record" ? Queryable<T> : QuerySequence<T>;
@@ -148,6 +167,7 @@ type PropertyGroups<T, P extends PropertyKey, M extends Mode> = {
 
 interface Source<T> {
   [ITERATE](): Iterable<Entry<T>>;
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U>;
 }
 
 interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
@@ -217,7 +237,13 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
+interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
+  /** Append explicitly keyed sources; duplicateKeys defaults to error. */
+  [CONCAT]<U>(this: Result<T, M>, sources: readonly (Queryable<U> | QuerySequence<U>)[], options?: QuerySequenceOptions): QuerySequence<T | U>;
+  /** Pair positions, retaining the receiver key; pulls left to right until shortest. */
+  [ZIP]<U extends readonly unknown[]>(this: Result<T, M>, ...sources: { [K in keyof U]: Queryable<U[K]> | QuerySequence<U[K]> }): QuerySequence<[T, ...U]>;
+  /** Emit explicit identities; mapper receives (value, originalKey). */
+  [FLAT_MAP]<U>(this: Result<T, M>, mapper: (value: T, originalKey: string) => Iterable<Entry<U>>, options?: QuerySequenceOptions): QuerySequence<U>;
   /** Cache selector keys once per entry per consumption and sort lexicographically. */
   [SORT_BY](this: Result<T, M>, ...rules: OrderRules<T>): QuerySequence<T>;
   /** Keep at most K winners, then return them in stable sorted order. */
@@ -538,6 +564,36 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
   return fromEntries(filterEntries(recordEntries(this), predicate));
 }
 
+function zip<T, U extends readonly unknown[]>(
+  this: Source<T>, ...sources: { [K in keyof U]: Source<U[K]> }
+): QuerySequence<[T, ...U]>;
+function zip<T>(this: Source<T>, ...sources: Source<unknown>[]): QuerySequence<unknown[]> {
+  const factories: EntrySourceFactory<unknown>[] = [
+    () => this[ITERATE](),
+    ...sources.map(source => () => source[ITERATE]()),
+  ];
+  // The helper emits one value per source, in the variadic signature's order.
+  return this[COMBINE](() => zipEntries(factories));
+}
+
+const combinationMethods = {
+  [CONCAT]<T, U>(this: Source<T>, sources: readonly Source<U>[], options?: QuerySequenceOptions): QuerySequence<T | U> {
+    const factories: EntrySourceFactory<T | U>[] = [
+      () => this[ITERATE](),
+      ...sources.map(source => () => source[ITERATE]()),
+    ];
+    return this[COMBINE](() => concatEntries(factories), options);
+  },
+  [ZIP]: zip,
+  [FLAT_MAP]<T, U>(
+    this: Source<T>,
+    mapper: (value: T, originalKey: string) => Iterable<Entry<U>>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    return this[COMBINE](() => flatMapEntries(() => this[ITERATE](), mapper), options);
+  },
+};
+
 function partition<T, S extends T>(
   this: Queryable<T>, predicate: (value: T, key: string) => value is S,
 ): [Queryable<S>, Queryable<T>];
@@ -559,6 +615,25 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  ...combinationMethods,
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
+    return new Sequence(Array.from(iterateEntries(createQuerySequence(factory, options))), false);
+  },
+  [CHUNK]<T>(this: Queryable<T>, size: number): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[CHUNK](size);
+  },
+  [WINDOW]<T>(this: Queryable<T>, size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[WINDOW](size, stride, partial);
+  },
+  [PAIRWISE]<T>(this: Queryable<T>): QuerySequence<EntryPair<T>> {
+    return new Sequence(recordEntries(this), false)[PAIRWISE]();
+  },
+  [SPLIT]<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[SPLIT](predicate);
+  },
+  [PARTITION_BY]<T, K>(this: Queryable<T>, selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[PARTITION_BY](selector);
+  },
   [SORT_BY]<T>(this: Queryable<T>, ...rules: OrderRules<T>): QuerySequence<T> {
     return new Sequence(sortByEntries(recordEntries(this), rules), false);
   },
@@ -662,7 +737,11 @@ const queryablePrototype = {
 };
 
 // Both implementations use exactly the same terminal functions, not bound copies.
-interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof EACH | typeof THROUGH> {}
+interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof EACH | typeof THROUGH> {
+  [CONCAT]: Operations<T, "sequence">[typeof CONCAT];
+  [ZIP]: Operations<T, "sequence">[typeof ZIP];
+  [FLAT_MAP]: Operations<T, "sequence">[typeof FLAT_MAP];
+}
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
@@ -670,8 +749,35 @@ class Sequence<T> implements QuerySequence<T> {
     return this.source;
   }
 
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
+    return this.next(iterateEntries(createQuerySequence(factory, options)));
+  }
+
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  private buffers<U>(source: Iterable<Entry<U>>, copy: (value: U) => U): Sequence<U> {
+    return new Sequence(this.lazy ? source : defer(copyBuffers, Array.from(source), copy), this.lazy);
+  }
+
+  [CHUNK](size: number): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    return this.buffers(defer(windowEntries, this.source, size, size, true), copyBuffer<T>);
+  }
+  [WINDOW](size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    validateWindowSize(stride, "stride");
+    return this.buffers(defer(windowEntries, this.source, size, stride, partial), copyBuffer<T>);
+  }
+  [PAIRWISE](): QuerySequence<EntryPair<T>> {
+    return this.buffers(defer(pairEntries, this.source), copyPair<T>);
+  }
+  [SPLIT](predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(splitEntries, this.source, predicate), copyBuffer<T>);
+  }
+  [PARTITION_BY]<K>(selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(adjacentGroupEntries, this.source, selector), copyBuffer<T>);
   }
 
   [SORT_BY](...rules: OrderRules<T>): QuerySequence<T> {
@@ -801,7 +907,7 @@ class Sequence<T> implements QuerySequence<T> {
   }
 }
 
-Object.assign(Sequence.prototype, terminals);
+Object.assign(Sequence.prototype, terminals, combinationMethods);
 Object.freeze(Sequence.prototype);
 // A null root makes "__proto__", "constructor", and "toString" ordinary data keys.
 Object.setPrototypeOf(queryablePrototype, null);
@@ -845,7 +951,7 @@ export function createQuerySequence<T>(
     case "error":
     case "first":
     case "last":
-      return new Sequence(defer(checkedEntries, factory, policy), true);
+      return new Sequence(defer(checkedEntries, () => managedEntries(factory), policy), true);
     default: {
       const unsupported: never = policy;
       throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
