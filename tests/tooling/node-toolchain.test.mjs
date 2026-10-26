@@ -6,12 +6,12 @@ import { parse } from 'yaml';
 
 const root = path.resolve(import.meta.dirname, '../..');
 
-test('Node toolchain: repository version file -> Node 24 selected', async () => {
+test('Node toolchain: repository version file -> security-patched Node 24.22.1 selected', async () => {
   const versionFile = path.join(root, '.nvmrc');
 
-  const major = Number((await readFile(versionFile, 'utf8')).trim());
+  const version = (await readFile(versionFile, 'utf8')).trim();
 
-  assert.equal(major, 24);
+  assert.equal(version, '24.22.1');
 });
 
 for (const name of ['ci', 'release', 'publish']) {
