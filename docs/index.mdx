@@ -448,6 +448,71 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Readonly shape snapshots
+
+`createShapeQueryable(input, keys)` is an opt-in, eager `ShapeQueryable<S>` view
+for heterogeneous records. The explicit string-key whitelist is required:
+TypeScript object types are open, so an object typed as `{ count: number }` can
+also have other runtime properties. Only requested, own, enumerable string keys
+are copied, in the input's native object order. Duplicate requests are ignored.
+Use string keys, including quoted numeric keys such as `"2"`; Symbol keys are
+not part of the shape.
+
+```ts
+import { createShapeQueryable, ENTRIES, PICK, MAP, WHERE, TO_OBJECT } from "@ilokesto/queryable";
+
+const input: { count: number; label: string; optional?: boolean } = {
+  count: 1, label: "one",
+};
+const snapshot = createShapeQueryable(input, ["count", "label", "optional"]);
+for (const [key, value] of snapshot[ENTRIES]()) {
+  if (key === "count") value.toFixed(); // number
+  if (key === "label") value.toUpperCase(); // string
+}
+snapshot[PICK]("optional")[TO_OBJECT](); // {}; optional is boolean | undefined
+snapshot[PICK]("unknown")[ENTRIES](); // []; element type is never
+snapshot[MAP](String)[PICK]("count")[TO_OBJECT](); // { count: "1" }
+snapshot[WHERE](value => typeof value === "number")[TO_OBJECT](); // { count: 1 }
+```
+
+The view exposes `COUNT`, `FIRST`, `VALUES`, `ENTRIES`, `TO_OBJECT`, `PICK`, `MAP`,
+and `WHERE` through shared, frozen Symbol methods. It has no direct record
+properties. `MAP` and `WHERE` execute immediately with `(value, originalKey)` in
+record order and propagate callback errors unchanged. `PICK` uses argument order
+subject to native integer-key ordering, ignores missing and duplicate keys, and
+keeps stored `undefined`. Empty inputs invoke no callbacks: count is zero, first
+is `undefined`, and containers are empty.
+
+The snapshot, its extracted arrays and tuples, and its extracted ordinary objects
+are shallowly frozen. Each terminal creates a fresh container; `ENTRIES` may share
+its already frozen tuples. Input objects and nested values are **not** frozen.
+Replacing or deleting an input property does not change the snapshot, but nested
+objects remain shared references. Methods require their receiver. Nested values
+are neither cloned nor made deeply readonly.
+
+All object output properties are optional, even for required input properties:
+static types do not prove own enumerable presence. `FIRST` always includes
+`undefined`; no chain claims to be nonempty. A bounded `PICK` retains only the
+intersection of requested keys and the snapshot's domain. A broad `string` request
+keeps the possible original domain, never invents an arbitrary key, and still
+does not guarantee presence. Optional values retain their `undefined` possibility;
+use `COUNT` or own-property checks to distinguish a stored `undefined` from absence.
+
+`ShapeQueryable<S>` describes the initial object shape; chain results use the
+exported `ShapeSnapshot<E>` type, where `E` is the possible entry tuple union.
+`ENTRIES` preserves that key/value tuple union. `MAP` retains the key domain but
+assigns its callback's inferred result type to every possible key; it does not
+pretend to infer a different return type per key. A `WHERE` type guard intersects
+each existing value type with the guard's type, including literal guards against
+broader values. A boolean predicate preserves the possible value types and can
+remove any key. Callback parameters are value and key unions; use `ENTRIES` when
+key-based control-flow narrowing is needed.
+
+The mutable `Queryable<T>` API is unchanged. To use its other operations, pass
+`snapshot[TO_OBJECT]()` to `createQueryable`; that creates a new mutable record
+and deliberately gives up closed-shape guarantees. Shape snapshots do not add
+memoization or alter the existing live `LAZY` contract.
+
 ## Combining sources
 
 `CONCAT(sources, options?)` appends queries in array order, retaining their keys.

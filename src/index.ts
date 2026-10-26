@@ -64,6 +64,8 @@ import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.j
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export { createShapeQueryable } from "./shape.js";
+export type { ShapeEntry, ShapeQueryable, ShapeSnapshot } from "./shape.js";
 export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
 export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 

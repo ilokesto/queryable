@@ -442,6 +442,69 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
 
+## 읽기 전용 shape 스냅샷
+
+`createShapeQueryable(input, keys)`는 키마다 값 타입이 다른 레코드를 위한
+선택적 즉시 평가 `ShapeQueryable<S>` 뷰입니다. 문자열 키 목록은 필수입니다.
+TypeScript 객체 타입은 열린 구조이므로 `{ count: number }`로 선언한 객체에도
+다른 런타임 속성이 있을 수 있습니다. 요청한 키 중 자기 소유의 열거 가능한
+문자열 키만 원본의 네이티브 객체 순서로 복사하고 중복 요청은 무시합니다.
+숫자형 키도 `"2"`처럼 문자열로 선언하고 전달하세요. Symbol 키는 포함하지 않습니다.
+
+```ts
+import { createShapeQueryable, ENTRIES, PICK, MAP, WHERE, TO_OBJECT } from "@ilokesto/queryable";
+
+const input: { count: number; label: string; optional?: boolean } = {
+  count: 1, label: "one",
+};
+const snapshot = createShapeQueryable(input, ["count", "label", "optional"]);
+for (const [key, value] of snapshot[ENTRIES]()) {
+  if (key === "count") value.toFixed(); // number
+  if (key === "label") value.toUpperCase(); // string
+}
+snapshot[PICK]("optional")[TO_OBJECT](); // {}; optional은 boolean | undefined
+snapshot[PICK]("unknown")[ENTRIES](); // []; 원소 타입은 never
+snapshot[MAP](String)[PICK]("count")[TO_OBJECT](); // { count: "1" }
+snapshot[WHERE](value => typeof value === "number")[TO_OBJECT](); // { count: 1 }
+```
+
+뷰는 공유되고 동결된 Symbol 메서드 `COUNT`, `FIRST`, `VALUES`, `ENTRIES`,
+`TO_OBJECT`, `PICK`, `MAP`, `WHERE`를 제공하며 직접 조회하는 레코드 속성은
+없습니다. `MAP`과 `WHERE`는 레코드 순서대로 `(value, originalKey)`를 받아 즉시
+실행하고 콜백의 예외를 그대로 전달합니다. `PICK`은 숫자 키의 네이티브 순서를
+적용하면서 인자 순서로 선택하며, 없는 키와 중복 키는 무시하고 저장된 `undefined`는
+유지합니다. 빈 입력에서는 콜백을 호출하지 않으며 개수는 0, 첫 값은 `undefined`,
+컨테이너는 빈 결과입니다.
+
+스냅샷과 추출한 배열·튜플·일반 객체는 얕게 동결됩니다. terminal은 새 컨테이너를
+만들며 `ENTRIES`는 이미 동결된 튜플을 공유할 수 있습니다. 입력 객체와 중첩 값은
+**동결하지 않습니다**. 입력 속성을 교체하거나 삭제해도 스냅샷은 바뀌지 않지만
+중첩 객체는 참조를 공유합니다. 메서드는 receiver가 필요하며 중첩 값을 복제하거나
+깊은 readonly 타입으로 바꾸지 않습니다.
+
+객체 출력의 모든 속성은 입력에서 필수였더라도 optional입니다. 정적 타입은 자기
+소유의 열거 가능한 속성임을 증명하지 못하기 때문입니다. `FIRST`에는 항상
+`undefined`가 포함되며 어떤 체인도 nonempty를 보장하지 않습니다. bounded `PICK`은
+요청한 키와 기존 키 범위의 교집합만 남깁니다. 일반 `string` 요청은 원래 가능한
+키 범위를 유지하지만 임의의 새 키나 실제 존재 여부를 보장하지 않습니다.
+optional 값에는 `undefined` 가능성도 남습니다. 저장된 `undefined`와 부재는
+`COUNT` 또는 own-property 검사로 구분하세요.
+
+`ShapeQueryable<S>`는 초기 객체 shape를 표현하고, 체인 결과는 공개 타입
+`ShapeSnapshot<E>`를 사용합니다. `E`는 가능한 entry 튜플 union입니다.
+`ENTRIES`는 키와 값이 연결된 튜플 union을 유지합니다. `MAP`은 키 범위를
+유지하면서 콜백에서 추론한 결과 타입을 가능한 모든 키에 적용하며 키마다 별개의
+반환 타입을 추론한 것처럼 취급하지 않습니다. `WHERE` 타입 가드는 기존 키별
+값 타입과 가드 타입의 교집합을 남기므로 넓은 값 타입에 적용한 리터럴 가드도
+지원합니다. boolean predicate는 가능한 값 타입을 유지하며 어떤 키든 제거할 수
+있습니다. 콜백 인자는 값과 키의 union이므로 키 검사에 따른 제어 흐름 narrowing이
+필요하면 `ENTRIES`를 사용하세요.
+
+수정 가능한 `Queryable<T>` API는 바뀌지 않습니다. 다른 기존 연산이 필요하면
+`snapshot[TO_OBJECT]()`를 `createQueryable`에 전달하세요. 새 mutable 레코드가
+만들어지며 닫힌 shape 보장은 의도적으로 사라집니다. 이 스냅샷은 메모이제이션을
+추가하거나 기존의 live `LAZY` 계약을 바꾸지 않습니다.
+
 ## 여러 원본 결합
 
 `CONCAT(sources, options?)`는 수신자 뒤에 배열 순서대로 쿼리를 연결하고 각 키를
