@@ -1,3 +1,8 @@
+import { EACH, PARTITION, SCAN, TAP, THROUGH, eachEntry, partitionEntries, scanEntries, tapEntries, through } from "./stateful.js";
+import type { Stateful } from "./stateful.js";
+
+export { EACH, PARTITION, SCAN, TAP, THROUGH } from "./stateful.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -104,7 +109,7 @@ interface Terminals<T> extends Source<T> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T> {
+interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -248,6 +253,10 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean)
 }
 
 const terminals = {
+  [EACH]<T>(this: Source<T>, effect: (value: T, key: string) => void): void {
+    eachEntry(this[ITERATE](), effect);
+  },
+  [THROUGH]: through,
   [FIND]: find,
   [SOME]<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): boolean {
     for (const [key, value] of this[ITERATE]()) {
@@ -294,12 +303,34 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
   return fromEntries(filterEntries(recordEntries(this), predicate));
 }
 
+function partition<T, S extends T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => value is S,
+): [Queryable<S>, Queryable<T>];
+function partition<T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => boolean,
+): [Queryable<T>, Queryable<T>];
+function partition<T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => boolean,
+): [Queryable<T>, Queryable<T>] {
+  const [matching, nonmatching] = partitionEntries(recordEntries(this), predicate);
+  return [fromEntries(matching), fromEntries(nonmatching)];
+}
+
 const queryablePrototype = {
   ...terminals,
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
   [WHERE]: where,
+  [PARTITION]: partition,
+  [SCAN]<T, A>(
+    this: Queryable<T>, reducer: (accumulator: A, value: T, key: string) => A, seed: () => A,
+  ): Queryable<A> {
+    return fromEntries(scanEntries(recordEntries(this), reducer, seed));
+  },
+  [TAP]<T>(this: Queryable<T>, effect: (value: T, key: string) => void): Queryable<T> {
+    return fromEntries(tapEntries(recordEntries(this), effect));
+  },
   [SORT]<T>(this: Queryable<T>, compareFn: (a: T, b: T) => number): QuerySequence<T> {
     return new Sequence(sortEntries(recordEntries(this), compareFn), false);
   },
@@ -333,7 +364,7 @@ const queryablePrototype = {
 };
 
 // Both implementations use exactly the same terminal functions, not bound copies.
-interface Sequence<T> extends Terminals<T> {}
+interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof EACH | typeof THROUGH> {}
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
@@ -352,6 +383,18 @@ class Sequence<T> implements QuerySequence<T> {
   }
   [MAP]<U>(fn: (value: T, key: string) => U): QuerySequence<U> {
     return this.next(defer(mapEntries, this.source, fn));
+  }
+  [PARTITION]<S extends T>(predicate: (value: T, key: string) => value is S): [QuerySequence<S>, QuerySequence<T>];
+  [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>];
+  [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>] {
+    const [matching, nonmatching] = partitionEntries(this.source, predicate);
+    return [new Sequence(matching, false), new Sequence(nonmatching, false)];
+  }
+  [SCAN]<A>(reducer: (accumulator: A, value: T, key: string) => A, seed: () => A): QuerySequence<A> {
+    return this.next(defer(scanEntries, this.source, reducer, seed));
+  }
+  [TAP](effect: (value: T, key: string) => void): QuerySequence<T> {
+    return this.next(defer(tapEntries, this.source, effect));
   }
   [SORT](compareFn: (a: T, b: T) => number): QuerySequence<T> {
     return new Sequence(
