@@ -496,6 +496,180 @@ values(live); // ["changed", "three"]; 메모이제이션 없음
 자체는 기존과 같습니다. 지연 소비는 매번 처음부터 실행하여 live 원본을 읽으며,
 콜백과 명시적 누산기 객체는 호출자가 소유합니다.
 
+## 읽기 전용 shape 스냅샷
+
+`createShapeQueryable(input, keys)`는 키마다 값 타입이 다른 레코드를 위한
+선택적 즉시 평가 `ShapeQueryable<S>` 뷰입니다. 문자열 키 목록은 필수입니다.
+TypeScript 객체 타입은 열린 구조이므로 `{ count: number }`로 선언한 객체에도
+다른 런타임 속성이 있을 수 있습니다. 요청한 키 중 자기 소유의 열거 가능한
+문자열 키만 원본의 네이티브 객체 순서로 복사하고 중복 요청은 무시합니다.
+숫자형 키도 `"2"`처럼 문자열로 선언하고 전달하세요. Symbol 키는 포함하지 않습니다.
+
+```ts
+import { createShapeQueryable, ENTRIES, PICK, MAP, WHERE, TO_OBJECT } from "@ilokesto/queryable";
+
+const input: { count: number; label: string; optional?: boolean } = {
+  count: 1, label: "one",
+};
+const snapshot = createShapeQueryable(input, ["count", "label", "optional"]);
+for (const [key, value] of snapshot[ENTRIES]()) {
+  if (key === "count") value.toFixed(); // number
+  if (key === "label") value.toUpperCase(); // string
+}
+snapshot[PICK]("optional")[TO_OBJECT](); // {}; optional은 boolean | undefined
+snapshot[PICK]("unknown")[ENTRIES](); // []; 원소 타입은 never
+snapshot[MAP](String)[PICK]("count")[TO_OBJECT](); // { count: "1" }
+snapshot[WHERE](value => typeof value === "number")[TO_OBJECT](); // { count: 1 }
+```
+
+뷰는 공유되고 동결된 Symbol 메서드 `COUNT`, `FIRST`, `VALUES`, `ENTRIES`,
+`TO_OBJECT`, `PICK`, `MAP`, `WHERE`를 제공하며 직접 조회하는 레코드 속성은
+없습니다. `MAP`과 `WHERE`는 레코드 순서대로 `(value, originalKey)`를 받아 즉시
+실행하고 콜백의 예외를 그대로 전달합니다. `PICK`은 숫자 키의 네이티브 순서를
+적용하면서 인자 순서로 선택하며, 없는 키와 중복 키는 무시하고 저장된 `undefined`는
+유지합니다. 빈 입력에서는 콜백을 호출하지 않으며 개수는 0, 첫 값은 `undefined`,
+컨테이너는 빈 결과입니다.
+
+스냅샷과 추출한 배열·튜플·일반 객체는 얕게 동결됩니다. terminal은 새 컨테이너를
+만들며 `ENTRIES`는 이미 동결된 튜플을 공유할 수 있습니다. 입력 객체와 중첩 값은
+**동결하지 않습니다**. 입력 속성을 교체하거나 삭제해도 스냅샷은 바뀌지 않지만
+중첩 객체는 참조를 공유합니다. 메서드는 receiver가 필요하며 중첩 값을 복제하거나
+깊은 readonly 타입으로 바꾸지 않습니다.
+
+객체 출력의 모든 속성은 입력에서 필수였더라도 optional입니다. 정적 타입은 자기
+소유의 열거 가능한 속성임을 증명하지 못하기 때문입니다. `FIRST`에는 항상
+`undefined`가 포함되며 어떤 체인도 nonempty를 보장하지 않습니다. bounded `PICK`은
+요청한 키와 기존 키 범위의 교집합만 남깁니다. 일반 `string` 요청은 원래 가능한
+키 범위를 유지하지만 임의의 새 키나 실제 존재 여부를 보장하지 않습니다.
+optional 값에는 `undefined` 가능성도 남습니다. 저장된 `undefined`와 부재는
+`COUNT` 또는 own-property 검사로 구분하세요.
+
+`ShapeQueryable<S>`는 초기 객체 shape를 표현하고, 체인 결과는 공개 타입
+`ShapeSnapshot<E>`를 사용합니다. `E`는 가능한 entry 튜플 union입니다.
+`ENTRIES`는 키와 값이 연결된 튜플 union을 유지합니다. `MAP`은 키 범위를
+유지하면서 콜백에서 추론한 결과 타입을 가능한 모든 키에 적용하며 키마다 별개의
+반환 타입을 추론한 것처럼 취급하지 않습니다. `WHERE` 타입 가드는 기존 키별
+값 타입과 가드 타입의 교집합을 남기므로 넓은 값 타입에 적용한 리터럴 가드도
+지원합니다. boolean predicate는 가능한 값 타입을 유지하며 어떤 키든 제거할 수
+있습니다. 콜백 인자는 값과 키의 union이므로 키 검사에 따른 제어 흐름 narrowing이
+필요하면 `ENTRIES`를 사용하세요.
+
+수정 가능한 `Queryable<T>` API는 바뀌지 않습니다. 다른 기존 연산이 필요하면
+`snapshot[TO_OBJECT]()`를 `createQueryable`에 전달하세요. 새 mutable 레코드가
+만들어지며 닫힌 shape 보장은 의도적으로 사라집니다. 이 스냅샷은 메모이제이션을
+추가하거나 기존의 live `LAZY` 계약을 바꾸지 않습니다.
+
+## 여러 원본 결합
+
+`CONCAT(sources, options?)`는 수신자 뒤에 배열 순서대로 쿼리를 연결하고 각 키를
+유지합니다. 뒤쪽 원본은 그 첫 entry가 필요할 때만 획득합니다.
+`FLAT_MAP(mapper, options?)`는 원본 순서대로 `mapper(value, originalKey)`를
+호출하고 반환된 iterable을 모두 소비한 뒤 다음 원본 entry로 진행합니다.
+mapper는 키 없는 값 대신 명시적인 `[stringKey, value]` 튜플을 출력합니다.
+원본 키는 콜백 문맥에 유지되며 출력 키가 새 identity입니다. 값의 필드를
+검사하거나 암묵적으로 키를 만들지 않습니다.
+
+두 연산은 위 factory와 같은 `{ duplicateKeys: "error" | "first" | "last" }`
+옵션과 공통 identity 경계를 사용합니다. 기본값은 ENTRIES·TO_OBJECT·PICK을
+통한 소비에서도 충돌을 거부하며, `"last"`는 첫 출력 전에 전체를 버퍼링합니다.
+입력 쿼리 자체의 identity 정책을 먼저 적용한 뒤 결합 결과 정책을 적용합니다.
+
+`ZIP(...queries)`는 위치별 값을 이종 타입 튜플로 추론하며 수신자 키를 유지합니다.
+매 행마다 수신자부터 인자를 왼쪽에서 오른쪽으로 읽고, 첫 종료 원본에서
+전체를 끝냅니다. 마지막 회차에서 앞쪽 원본은 짝 없는 값을 하나 읽을 수 있지만
+뒤쪽 원본은 읽지 않습니다. 수신자가 비어 있으면 뒤쪽 원본을 획득하지 않습니다.
+인자가 없으면 길이 1 튜플을 출력합니다.
+
+세 연산은 행 확장·결합을 표현하므로 항상 시퀀스를 반환하며 수신자의 실행 모드를
+유지합니다. 레코드와 eager 정렬 시퀀스는 호출 즉시 계산하고, lazy 수신자는
+소비까지 지연하며 live·repeatable·nonmemoized 상태로 매번 새 iterator를 획득합니다.
+빈 확장은 entry가 없고 빈 입력에서는 mapper를 호출하지 않습니다. lazy 결과의
+`LIMIT(0)`은 원본을 획득하지 않습니다. 정상 소진한 iterator에는 `return()`을
+명시적으로 호출하지 않습니다. 최단 종료·조기 반환과 factory·next·콜백 예외 시
+중첩 원본과 형제 원본을 포함한 아직 소진하지 않은 획득 iterator를 닫습니다.
+정리 예외가 있어도 나머지 정리를 시도하고 원래 예외를 덮어쓰지 않습니다.
+원래 예외가 없으면 첫 정리 예외를 전파합니다. entry와 ZIP 행 튜플은 새로 만들되
+값 참조는 얕게 유지합니다.
+
+```ts
+import {
+  createQueryable, CONCAT, ZIP, FLAT_MAP, LAZY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({ a: 1, b: 2 });
+left[LAZY]()[CONCAT]([createQueryable({ c: 3 })])[VALUES](); // [1, 2, 3]
+left[ZIP](createQueryable({ x: "one" }))[ENTRIES](); // [["a", [1, "one"]]]
+left[FLAT_MAP]((value, key) => [
+  [`${key}:original`, value],
+  [`${key}:double`, value * 2],
+])[ENTRIES](); // [["a:original", 1], ["a:double", 2], ["b:original", 2], ["b:double", 4]]
+```
+
+## 로컬 entry 버퍼와 인접 그룹
+
+아래 shared Symbol 메서드는 순서를 유지하는 `QuerySequence`를 반환합니다.
+결과 키는 각 버퍼에 포함된 첫 entry의 원본 키인 anchor입니다. 생성한 인덱스나
+selector 결과를 키로 쓰지 않으므로, 입력 키가 고유하면 숫자·특수 키를 포함한
+anchor도 고유합니다. 값은 원본 `[key, value]`를 담은 새 배열이며 튜플도 새로
+복사합니다. 중첩 값의 참조는 유지합니다. 겹친 window끼리 노출 튜플을 공유하지
+않습니다. 다음 소비가 이전 버퍼를 변경하지 않으며, 노출 배열을 수정해도 즉시
+평가 스냅샷이나 다음 소비 결과는 바뀌지 않습니다.
+
+| 메서드 | 버퍼 정책 |
+| --- | --- |
+| `[CHUNK](size)` | 겹치지 않는 묶음; 마지막 비어 있지 않은 부분 chunk 포함 |
+| `[WINDOW](size, stride = 1, partial = false)` | `0, stride, 2 * stride, ...` 위치에서 시작; stride가 작으면 겹치고 크면 간격을 건너뜀; 기본은 완전한 window만 출력 |
+| `[PAIRWISE]()` | 완전한 인접 쌍만 출력; `EntryPair<T>`는 정확히 `[[string, T], [string, T]]` |
+| `[SPLIT]((value, originalKey) => boolean)` | 일치한 entry는 구분자로 제외; 앞·연속·뒤 구분자는 빈 그룹을 만들지 않음 |
+| `[PARTITION_BY]((value, originalKey) => selected)` | selector 결과가 같은 연속 구간을 출력; 마지막 비어 있지 않은 구간 포함 |
+
+size와 stride는 양의 유한 정수여야 합니다. 잘못된 인자는 빈 입력이나 지연
+쿼리에서도 원본 획득 전에 즉시 `RangeError`를 던집니다. 빈 입력은 버퍼를
+만들지 않습니다. 짧은 입력은 부분 CHUNK를 만들지만 기본 WINDOW와 PAIRWISE는
+만들지 않습니다. WINDOW의 partial을 true로 지정하면 끝 전의 모든 시작
+위치에서 비어 있지 않은 부분 window를 만들므로, 겹치는 짧은 꼬리가 여러 개
+나올 수 있습니다.
+
+```ts
+import {
+  createQueryable, LAZY, CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+query[CHUNK](3)[ENTRIES]();
+// [["a", [["a", 1], ["b", 1], ["c", 2]]], ["d", [["d", 1]]]]
+query[WINDOW](2, 3, true)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[PAIRWISE]()[VALUES](); // 원본 entry의 완전한 인접 쌍 3개
+query[LAZY]()[SPLIT](value => value === 2)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[LAZY]()[PARTITION_BY](value => value)[VALUES]();
+// [[["a", 1], ["b", 1]], [["c", 2]], [["d", 1]]]
+```
+
+PARTITION_BY는 Set 기반 DISTINCT_BY와 같은 SameValueZero 동등성을 사용합니다.
+`NaN`끼리 같고 `-0`과 `0`도 같으며 객체와 Symbol은 identity로 비교합니다.
+저장된 `undefined`나 selector의 `undefined` 결과는 초기화 전 상태가 아닌
+일반 데이터입니다. `A,A,B,A`는 세 구간이 됩니다. 기존 GROUP_BY는 계속 같은
+문자열 그룹 키 전체를 즉시 모읍니다.
+
+레코드와 즉시 평가 시퀀스에서는 호출 즉시 실행하여 스냅샷을 만듭니다. LAZY
+이후에는 실행을 미루고 매 소비마다 live 원본을 다시 읽으며 버퍼 상태를
+독립 생성합니다. 메모이제이션은 없습니다. 콜백은 읽은 entry마다 원본 순서로
+한 번씩 `(value, originalKey)`를 받습니다. SPLIT은 그룹을 끝내는 구분자까지
+읽습니다. PARTITION_BY는 경계를 확인하려고 다음 구간의 첫 entry 하나를
+미리 읽고 selector를 계산합니다. 그 entry를 다음 구간에 포함하며 selector를
+다시 부르지 않습니다. 입력 종료에 추가 콜백은 없습니다. 조기 종료와 콜백·원본
+예외는 획득한 upstream generator를 닫습니다. 예외는 그대로 전파하고 다음
+소비는 새로 시작합니다.
+
+지연 CHUNK/WINDOW 내부에는 최대 size개의 원본 entry를 유지하고 PAIRWISE는
+직전 entry 하나를 유지합니다. 새 출력 복사본도 버퍼 크기에 비례하는 공간을
+씁니다. SPLIT과 PARTITION_BY의 현재 그룹은 구분자·selector 변경·입력 종료가
+없으면 무한히 커질 수 있으며, 무한히 이어지는 한 구간에서는 그룹을 출력할
+수 없습니다. 이 범위는 upstream identity 추적·다른 버퍼링 연산·소비자가
+보관한 결과를 제외합니다. 즉시 평가는 모든 결과 버퍼를 저장합니다.
+
 ### Async entry 원본과 Promise 정규화
 
 `createAsyncQuerySequence(factory, options?)`는 항상 지연 실행하는 별도

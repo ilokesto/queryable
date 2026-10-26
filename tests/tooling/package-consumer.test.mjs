@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { packRelease } from '../../scripts/release-verify.mjs';
 
@@ -52,7 +53,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     }
   }
 
-  const program = ts.createProgram(['consumer.ts', 'functional.ts', 'modules.ts'].map(file => path.join(consumer, file)), {
+  const program = ts.createProgram(['consumer.ts', 'functional.ts', 'modules.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -91,6 +92,25 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     'export const reuse: (query: Queryable<string>) => number[] = transform;',
     'export const key: typeof WHERE = symbolWhere;',
   ].join('\n'));
+  const { invalidShapePrograms, shapeDownstreamSource } = await import(pathToFileURL(path.join(consumer, 'dist/shape.js')).href);
+  const shapeDownstream = path.join(consumer, 'shape-downstream.ts');
+  await writeFile(shapeDownstream, shapeDownstreamSource);
+  const shapeProgram = ts.createProgram([shapeDownstream], { ...options, noEmit: true });
+  const shapeDiagnostics = ts.getPreEmitDiagnostics(shapeProgram);
+  assert.equal(shapeDiagnostics.length, 0, format(shapeDiagnostics));
+  for (const { name, source, codes } of invalidShapePrograms) {
+    const file = path.join(consumer, `invalid-shape-${name}.ts`);
+    await writeFile(file, [
+      'import { COUNT, ENTRIES, FIRST, PICK, TO_OBJECT, createShapeQueryable } from "@ilokesto/queryable";',
+      'import { snapshot, picked, mapped, narrowed, bounded, unbounded, entries, afterFiltering, subset, openInput } from "./dist/shape.js";',
+      source,
+    ].join('\n'));
+    const invalidShape = ts.createProgram([file], { ...options, noEmit: true });
+    const failures = ts.getPreEmitDiagnostics(invalidShape);
+    assert.ok(failures.every(failure => failure.file?.fileName === file), format(failures));
+    assert.deepEqual(failures.map(failure => failure.code), codes, `${name}\n${format(failures)}`);
+  }
+
   const downstream = ts.createProgram([
     path.join(consumer, 'downstream.ts'), path.join(consumer, 'functional-downstream.ts'),
     path.join(consumer, 'modules-downstream.ts'),

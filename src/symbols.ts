@@ -9,3 +9,5 @@ export { FINALIZE, ON_COMPLETE } from "./lifetime.js";
 export { AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE } from "./lookup.js";
 export { MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K } from "./ordering.js";
 export { EACH, PARTITION, SCAN, TAP, THROUGH } from "./stateful.js";
+export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
+export { CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY } from "./windows.js";
