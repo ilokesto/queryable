@@ -448,6 +448,56 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Combining sources
+
+`CONCAT(sources, options?)` appends queries in array order, retaining their keys.
+The receiver comes first; a later source is acquired only when its first entry
+is demanded. `FLAT_MAP(mapper, options?)` calls `mapper(value, originalKey)` in
+source order and drains each returned iterable before advancing the source.
+The mapper emits explicit `[stringKey, value]` tuples, not unkeyed values:
+original keys remain available as callback context, while emitted keys define
+output identity. No payload fields are inspected or used to invent keys.
+
+Both accept the same `{ duplicateKeys: "error" | "first" | "last" }` option
+and share the factory identity boundary described above. The default rejects
+collisions, including through `ENTRIES`, `TO_OBJECT`, and `PICK`; `"last"`
+buffers before producing any entry. Input queries retain their own identity
+policies before the combined output policy applies.
+
+`ZIP(...queries)` pairs positions into an inferred heterogeneous tuple and uses
+the receiver's key. Each row pulls the receiver, then arguments left to right.
+The first exhausted input ends the result: earlier inputs may have supplied
+one unmatched value in that final round, while later inputs are not pulled.
+An empty receiver does not acquire later inputs. With no arguments, ZIP emits
+one-element tuples.
+
+All three return sequences because rows can expand or combine. They retain the
+receiver's evaluation mode: records and eager ordered sequences materialize at
+the call; lazy receivers defer work, stay live and repeatable, and acquire fresh
+iterators on every consumption. An empty expansion produces no entries, and no
+mapper runs for empty input. `LIMIT(0)` on a lazy result acquires nothing.
+Naturally exhausted iterators are not explicitly sent `return()`. Unfinished
+iterators close on shortest termination, early return, and factory, `next`, or
+callback failure, including nested and sibling iterators.
+Cleanup attempts every unfinished acquired iterator; a primary failure is never replaced
+by a cleanup failure. Without a primary failure, the first cleanup failure
+propagates. Entry tuples and ZIP row tuples are fresh; payload references remain
+shallow.
+
+```ts
+import {
+  createQueryable, CONCAT, ZIP, FLAT_MAP, LAZY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({ a: 1, b: 2 });
+left[LAZY]()[CONCAT]([createQueryable({ c: 3 })])[VALUES](); // [1, 2, 3]
+left[ZIP](createQueryable({ x: "one" }))[ENTRIES](); // [["a", [1, "one"]]]
+left[FLAT_MAP]((value, key) => [
+  [`${key}:original`, value],
+  [`${key}:double`, value * 2],
+])[ENTRIES](); // [["a:original", 1], ["a:double", 2], ["b:original", 2], ["b:double", 4]]
+```
+
 ## Local entry buffers and adjacent groups
 
 These shared Symbol methods return ordered `QuerySequence` results. Each result
