@@ -1060,6 +1060,142 @@ limited stage complete; a hook before it sees early return. No hook or source
 runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
 shared and frozen, with fresh execution state on each consumption.
 
+## Event and ReadableStream sources
+
+Import platform adapters explicitly from `@ilokesto/queryable/streams`. The root
+entry does not reexport or load them. The subpath has no runtime dependencies or
+top-level access to DOM globals and does not import `node:events`. Its factories
+return the existing `AsyncQuerySequence`, with the same shared Symbol methods.
+
+```ts
+import { FIRST, MAP, VALUES } from "@ilokesto/queryable";
+import { fromEventTarget, fromReadableStream } from "@ilokesto/queryable/streams";
+
+const target = new EventTarget();
+const controller = new AbortController();
+const events = fromEventTarget(target, "message", {
+  capacity: 16,
+  overflow: "error",
+  signal: controller.signal,
+});
+const first = events[FIRST](); // subscription starts now, not at construction
+target.dispatchEvent(new Event("message"));
+await first; // removes the subscription
+
+const numbers = fromReadableStream(() => new ReadableStream<number>({
+  start(stream) {
+    stream.enqueue(2);
+    stream.enqueue(3);
+    stream.close();
+  },
+}));
+await numbers[MAP](async value => value * 2)[VALUES](); // [4, 6]
+```
+
+### Hot events and bounded pending queues
+
+`fromEventTarget(target, event, options)` emits the original `Event`.
+`fromEventEmitter<Args>(source, event, options)` accepts a structural source with
+`on` and `off` methods; each value is the entire argument tuple `Args`, including
+empty tuples and stored `undefined`. Import a native EventEmitter in the
+application, not in the library:
+
+```ts
+import { EventEmitter } from "node:events";
+import { ENTRIES } from "@ilokesto/queryable";
+import { fromEventEmitter } from "@ilokesto/queryable/streams";
+
+const emitter = new EventEmitter();
+const query = fromEventEmitter<[number, string]>(emitter, "data", {
+  capacity: 2,
+  overflow: "drop-oldest",
+  endEvent: "end",
+});
+const result = query[ENTRIES]();
+emitter.emit("data", 10, "ten");
+emitter.emit("end");
+await result; // [["0", [10, "ten"]]]
+```
+
+Both event adapters require a positive safe-integer `capacity` and an explicit
+`overflow` policy. Invalid options throw before subscription.
+
+| Policy | When the pending event queue is full |
+| --- | --- |
+| `"error"` | Discard the queue, unsubscribe immediately, and fail with `EventQueueOverflowError` whose `capacity` is available |
+| `"drop-oldest"` | Discard the oldest queued entry, then enqueue the incoming entry |
+| `"drop-newest"` | Discard the incoming entry |
+
+The bound covers pending event entries, not values already handed to the async
+query pipeline, user callbacks, or metadata used by the existing duplicate-key
+checker. It is **not producer backpressure**: emitters and targets continue
+producing and are never paused. A failure detaches immediately, but cannot force
+an already-running downstream Promise to settle.
+
+Every consumption subscribes independently to the same hot source. There is no
+replay of events before subscription or after unsubscription, and no memoization.
+An unused query or downstream `LIMIT(0)` subscribes to nothing. `FIRST`, positive
+`LIMIT`, a consumer break, callback failure, and configured abort all clean up.
+For finite terminals on an otherwise infinite event source, limit consumption,
+configure `endEvent`, or abort.
+
+Optional `endEvent` detaches immediately and drains already queued entries.
+Optional `errorEvent` discards queued entries and fails with the exact event
+object for EventTarget or first emitted argument for EventEmitter, including
+`undefined`. EventEmitter defaults to `"error"`; EventTarget has no default error
+event. After detachment, native EventEmitter's usual unhandled `"error"` behavior
+belongs to the application again.
+
+Default keys are unique decimal strings starting at `"0"` for each subscription.
+Optional `key(value, ordinal)` receives the original event or tuple and a
+zero-based `bigint`, synchronously in dispatch order, before overflow handling.
+Dropped events therefore leave gaps in later keys. A thrown selector value,
+including `undefined`, becomes a query failure and never escapes into host event
+dispatch. A selector can use special keys such as `"__proto__"`; duplicate keys
+follow the existing async sequence's default rejection policy.
+
+Listener removal is attempted once per registration, including on errors.
+An existing source error or abort wins over cleanup failure. Without a primary
+failure, removal failure rejects consumption; all remaining removals are still
+attempted. Late callbacks are ignored.
+
+### Cold streams and reader ownership
+
+`fromReadableStream(factory, options?)` calls the synchronous factory on demand
+with the optional configured `signal`. Return a **fresh, unlocked**
+`ReadableStream<T>` for each consumption; an existing one-shot stream is not a
+repeatable factory. The adapter acquires one reader, reads sequentially, and
+awaits chunk values through the normal async sequence. It does not prefetch into
+an extra adapter queue. Native stream queuing strategies and producer
+implementation determine actual backpressure.
+
+The optional `key(chunk, ordinal)` receives the raw chunk before it is awaited
+and a zero-based `bigint`; default keys are decimal strings per reader.
+Normal exhaustion releases the lock without cancellation. Early return, read
+failure, selector failure, and abort attempt cancellation once and release once.
+Abort passes `signal.reason` to `cancel`; adapter read/selector failures pass
+their exact error; early or downstream termination uses `undefined`.
+Cancellation is invoked before release, but lock release does not wait for the
+producer's cancellation Promise. Non-abort exits await cancellation completion.
+An existing failure wins over cleanup errors; otherwise cancel failure rejects
+the consumer, followed in precedence by release failure.
+
+No factory or reader is acquired for an unused query, downstream `LIMIT(0)`, or
+an already-aborted signal. Factory and reader-acquisition failures are propagated
+unchanged. The caller must own a fresh stream; an already locked stream cannot
+transfer ownership to the adapter.
+
+### Interrupting a pending public iterator
+
+Configure `{ signal }` when a public `iterateAsyncValues` or
+`iterateAsyncEntries` iterator may be abandoned with `next()` pending. Those
+views use native async generators: `return()` queues behind a pending `next()`
+and is not an immediate disposal operation. Abort first, then await the pending
+request's rejection and any queued return. Abort detaches event listeners or
+cancels/releases the stream reader without waiting for that generator queue.
+Without a signal, arrange for the source to emit, end, or fail before awaiting
+return. Neither adapter promises to forcibly cancel arbitrary producer or
+callback Promises; late cleanup rejections after abort are observed.
 ## Bounded concurrent async mapping
 
 `MAP_CONCURRENT(mapper, options)` explicitly overlaps async callbacks. Ordinary

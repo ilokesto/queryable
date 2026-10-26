@@ -16,6 +16,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./streams": {
+      "types": "./dist/streams.d.ts",
+      "import": "./dist/streams.js"
+    },
     "./operators": {
       "types": "./dist/functional.d.ts",
       "import": "./dist/functional.js"

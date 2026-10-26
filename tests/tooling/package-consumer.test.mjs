@@ -45,7 +45,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.equal(packed.manifest.version, '0.0.1');
   assert.equal(packed.manifest.publishConfig.access, 'public');
   assert.deepEqual(packed.manifest.dependencies ?? {}, {});
-  for (const entry of ['.', './operators', './symbols']) {
+  for (const entry of ['.', './streams', './operators', './symbols']) {
     const exported = packed.manifest.exports[entry];
     assert.deepEqual(Object.keys(exported), ['types', 'import']);
     for (const file of Object.values(exported)) {
@@ -53,7 +53,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     }
   }
 
-  const program = ts.createProgram(['consumer.ts', 'functional.ts', 'modules.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
+  const program = ts.createProgram(['consumer.ts', 'streams.ts', 'functional.ts', 'modules.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -62,6 +62,16 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.equal(emitted.diagnostics.length, 0, format(emitted.diagnostics));
   assert.ok((await readFile(path.join(consumer, 'dist/consumer.d.ts'))).length > 0);
   await exec(process.execPath, ['runtime.mjs'], { cwd: consumer });
+  await exec(process.execPath, ['streams-runtime.mjs'], { cwd: consumer });
+  await exec(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    globalThis.EventTarget = undefined;
+    globalThis.ReadableStream = undefined;
+    const root = await import('@ilokesto/queryable');
+    assert.equal('fromReadableStream' in root, false);
+    const streams = await import('@ilokesto/queryable/streams');
+    assert.equal(typeof streams.fromEventTarget, 'function');
+  `], { cwd: consumer });
   await exec(process.execPath, ['dist/functional.js'], { cwd: consumer });
   await exec(process.execPath, ['dist/modules.js'], { cwd: consumer });
   for (const entry of ['@ilokesto/queryable', '@ilokesto/queryable/operators', '@ilokesto/queryable/symbols']) {
