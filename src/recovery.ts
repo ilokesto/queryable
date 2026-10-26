@@ -1,10 +1,10 @@
 import { createAsyncQuerySequence, normalizedEntries } from "./async.js";
 import type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
-import { ENTRIES } from "./index.js";
+import { ENTRIES } from "./core-symbols.js";
 import { waitFor } from "./lifetime.js";
 
 /** Switch once to an explicit fallback after an upstream pull fails. */
-export const FALLBACK = Symbol("fallback");
+export { FALLBACK } from "./core-symbols.js";
 
 type Entry<T> = readonly [string, T];
 

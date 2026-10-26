@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   COUNT, FINALIZE, FIND, FIRST, GROUP_BY, LIMIT, MAP, ON_COMPLETE, SOME,
-  VALUES, WHERE, createAsyncQuerySequence, iterateAsyncEntries,
+  SORT, VALUES, WHERE, createAsyncQuerySequence, iterateAsyncEntries,
 } from "./index.js";
 import type { ConsumptionOutcome } from "./index.js";
 
@@ -15,6 +15,40 @@ function controlled<T>() {
 }
 
 describe("async cancellation and lifetime", () => {
+  it.each(["sort", "negative limit", "last"] as const)(
+    "%s buffer: abort after first output -> rejects instead of yielding buffered values",
+    async mode => {
+      const controller = new AbortController();
+      const reason = Symbol("buffer cancellation");
+      const source = createAsyncQuerySequence(function* () {
+        yield ["a", 1] as const;
+        yield ["b", 2] as const;
+        yield ["c", 3] as const;
+        if (mode === "last") {
+          yield ["a", 4] as const;
+        }
+      }, { signal: controller.signal, duplicateKeys: mode === "last" ? "last" : "error" });
+      const query = mode === "sort" ? source[SORT]((a, b) => b - a)
+        : mode === "negative limit" ? source[LIMIT](-1) : source;
+      const iterator = iterateAsyncEntries(query)[Symbol.asyncIterator]();
+      expect((await iterator.next()).done).toBe(false);
+
+      controller.abort(reason);
+
+      await expect(iterator.next()).rejects.toBe(reason);
+      await iterator.return?.();
+    },
+  );
+
+  it("SORT comparator aborts: completed sort -> rejects before emitting any buffered result", async () => {
+    const controller = new AbortController();
+    const reason = Symbol("comparator cancellation");
+    const query = createAsyncQuerySequence(() => [["a", 2], ["b", 1]], { signal: controller.signal })
+      [SORT]((a, b) => { controller.abort(reason); return a - b; });
+
+    await expect(query[VALUES]()).rejects.toBe(reason);
+  });
+
   it("signal: source and keyed callbacks -> receive the exact configured signal", async () => {
     const { signal } = new AbortController();
     const seen: (AbortSignal | undefined)[] = [];

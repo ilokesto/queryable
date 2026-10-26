@@ -15,6 +15,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./operators": {
+      "types": "./dist/functional.d.ts",
+      "import": "./dist/functional.js"
+    },
+    "./symbols": {
+      "types": "./dist/symbols.d.ts",
+      "import": "./dist/symbols.js"
     }
   },
   "files": ["dist"],

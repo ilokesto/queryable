@@ -7,6 +7,7 @@ import {
 import type { Queryable, QuerySequence } from "@ilokesto/queryable";
 
 export type { Queryable, QuerySequence } from "@ilokesto/queryable";
+export * from "./predicate-types.js";
 
 const input: Readonly<Record<string, string | number>> = { first: "one", second: 2 };
 export const record = createQueryable(input);
