@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { ENTRIES, LAZY, MAP, MAP_CONCURRENT, SORT, VALUES, createAsyncQuerySequence, createQueryable } from '@ilokesto/queryable';
-import { concurrentMapped, concurrentView, found, groups, mapped, narrowed, total, values } from './dist/consumer.js';
+import { ENTRIES, LAZY, MAP, MAP_CONCURRENT, SORT, VALUES, createAsyncQuerySequence, createQueryable, iterateAsyncEntries } from '@ilokesto/queryable';
+import { concurrentMapped, concurrentView, found, groups, mapped, narrowed, recoveredQuery, retriedQuery, total, values } from './dist/consumer.js';
 
 assert.deepEqual(values, ['one']);
 assert.deepEqual(narrowed[VALUES](), ['one']);
@@ -27,10 +27,13 @@ const completionOrder = createAsyncQuerySequence(() => [['a', 0], ['b', 1]])
     }
     return gates[value].promise;
   }, { concurrency: 2, prefetch: 1, reorderBuffer: 1, ordered: false });
-const result = completionOrder[ENTRIES]();
+const iterator = iterateAsyncEntries(completionOrder)[Symbol.asyncIterator]();
+const first = iterator.next();
 await started.promise;
 gates[1].resolve('second');
-// The first result is deliberately held until the second mapper has completed.
-await gates[1].promise;
+assert.deepEqual(await first, { done: false, value: ['b', 'second'] });
 gates[0].resolve('first');
-assert.deepEqual(await result, [['b', 'second'], ['a', 'first']]);
+assert.deepEqual(await iterator.next(), { done: false, value: ['a', 'first'] });
+assert.equal((await iterator.next()).done, true);
+assert.deepEqual(await recoveredQuery[VALUES](), ['recovered']);
+assert.deepEqual(await retriedQuery[VALUES](), [7]);

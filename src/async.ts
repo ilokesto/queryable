@@ -4,7 +4,9 @@ import { FINALIZE, ON_COMPLETE, completeEntries, finalizeEntries, waitFor } from
 import type { ConsumptionOutcome } from "./lifetime.js";
 import { MAP_CONCURRENT, concurrentEntries, concurrentMapOptions } from "./concurrency.js";
 import type { ConcurrentMapOptions } from "./concurrency.js";
-import { COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, SOME, SORT, VALUES, WHERE } from "./index.js";
+import { FALLBACK, fallbackEntries } from "./recovery.js";
+import type { AsyncFallbackFactory } from "./recovery.js";
+import { COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, SOME, SORT, VALUES, WHERE } from "./core-symbols.js";
 
 type Entry<T> = readonly [string, T];
 type Awaitable<T> = T | PromiseLike<T>;
@@ -51,6 +53,12 @@ export interface AsyncQuerySequence<T> {
     finalize: (outcome: ConsumptionOutcome, signal: AbortSignal | undefined) => Awaitable<void>,
   ): AsyncQuerySequence<T>;
   [ON_COMPLETE](this: AsyncQuerySequence<T>, complete: (signal: AbortSignal | undefined) => Awaitable<void>): AsyncQuerySequence<T>;
+  /** Preserve the emitted prefix, then switch once; collisions use error/first/last. */
+  [FALLBACK]<U>(
+    this: AsyncQuerySequence<T>,
+    fallback: AsyncFallbackFactory<U>,
+    options?: Pick<AsyncQuerySequenceOptions, "duplicateKeys">,
+  ): AsyncQuerySequence<T | Awaited<U>>;
   [GROUP_BY]<K extends string>(
     this: AsyncQuerySequence<T>,
     keyFn: (value: T, key: string, signal: AbortSignal | undefined) => Awaitable<K>,
@@ -72,7 +80,7 @@ function defer<T, A extends unknown[]>(generate: (...args: A) => AsyncIterable<T
   return new Deferred(generate, args);
 }
 
-async function* normalizedEntries<T>(factory: AsyncEntrySourceFactory<T>, signal?: AbortSignal): AsyncGenerator<Entry<Awaited<T>>> {
+export async function* normalizedEntries<T>(factory: AsyncEntrySourceFactory<T>, signal?: AbortSignal): AsyncGenerator<Entry<Awaited<T>>> {
   const source = await waitFor(() => factory(signal), signal);
   const iterator = Symbol.asyncIterator in source ? source[Symbol.asyncIterator]() : source[Symbol.iterator]();
   let exhausted = false;
@@ -127,7 +135,7 @@ async function* checkedEntries<T>(
     for await (const [key, value] of normalizedEntries(factory, signal)) {
       entries.set(key, value);
     }
-    yield* entries;
+    yield* snapshotEntries(entries, signal);
     return;
   }
   const seen = new Set<string>();
@@ -179,35 +187,40 @@ async function* sortEntries<T>(
   signal?: AbortSignal,
 ): AsyncGenerator<Entry<T>> {
   const entries = await collectEntries(source);
-  yield* entries.sort((left, right) => {
+  entries.sort((left, right) => {
     signal?.throwIfAborted();
     return compareFn(left[1], right[1], signal);
   });
+  yield* snapshotEntries(entries, signal);
 }
 
-async function* limitEntries<T>(source: AsyncIterable<Entry<T>>, n: number): AsyncGenerator<Entry<T>> {
+async function* limitEntries<T>(source: AsyncIterable<Entry<T>>, n: number, signal?: AbortSignal): AsyncGenerator<Entry<T>> {
   const count = Number.isNaN(n) ? 0 : Math.trunc(n);
   if (count === 0 || count === -Infinity) {
     return;
   }
   if (count < 0) {
-    yield* (await collectEntries(source)).slice(0, count);
+    yield* snapshotEntries((await collectEntries(source)).slice(0, count), signal);
     return;
   }
   let remaining = count;
+  signal?.throwIfAborted();
   for await (const entry of source) {
     yield entry;
+    signal?.throwIfAborted();
     if (--remaining === 0) {
       return;
     }
   }
 }
 
-async function* snapshotEntries<T>(entries: ReadonlyArray<Entry<T>>, signal?: AbortSignal): AsyncGenerator<Entry<T>> {
+async function* snapshotEntries<T>(entries: Iterable<Entry<T>>, signal?: AbortSignal): AsyncGenerator<Entry<T>> {
+  signal?.throwIfAborted();
   for (const entry of entries) {
     signal?.throwIfAborted();
     yield entry;
   }
+  signal?.throwIfAborted();
 }
 
 type SequenceConstructor = new <T>(source: AsyncIterable<Entry<T>>, signal?: AbortSignal) => AsyncQuerySequence<T>;
@@ -282,7 +295,7 @@ function createSequenceConstructor(): SequenceConstructor {
       return false;
     }
     [LIMIT](n: number): AsyncQuerySequence<T> {
-      return sequence(defer(limitEntries, this.source, n), this.signal);
+      return sequence(defer(limitEntries, this.source, n, this.signal), this.signal);
     }
     [LAZY](): AsyncQuerySequence<T> {
       return sequence(this.source, this.signal);
@@ -295,6 +308,19 @@ function createSequenceConstructor(): SequenceConstructor {
     }
     [ON_COMPLETE](complete: (signal: AbortSignal | undefined) => Awaitable<void>): AsyncQuerySequence<T> {
       return sequence(defer(completeEntries, this.source, complete, this.signal), this.signal);
+    }
+    [FALLBACK]<U>(
+      fallback: AsyncFallbackFactory<U>,
+      options: Pick<AsyncQuerySequenceOptions, "duplicateKeys"> = {},
+    ): AsyncQuerySequence<T | Awaited<U>> {
+      const policy = options.duplicateKeys ?? "error";
+      if (policy !== "error" && policy !== "first" && policy !== "last") {
+        throw new TypeError(`Unsupported duplicate key policy: ${String(policy)}`);
+      }
+      return sequence(
+        defer(checkedEntries, () => defer(fallbackEntries, this.source, fallback, this.signal), policy, this.signal),
+        this.signal,
+      );
     }
     async [GROUP_BY]<K extends string>(
       keyFn: (value: T, key: string, signal: AbortSignal | undefined) => Awaitable<K>,

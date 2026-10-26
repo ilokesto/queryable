@@ -104,6 +104,130 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
 
+## Predicate narrowing and property groups
+
+`WHERE(Boolean)` and `FIND(Boolean)` remove literal `false`, `0`, `0n`, `""`, `null`, and `undefined` from the value type. Broad `number`, `bigint`, and `string` stay broad: TypeScript cannot express all nonzero, non-NaN numbers or nonempty strings. A callback returning literal `false` gives an empty `Queryable<never>` or `QuerySequence<never>`; `FIND` returns `undefined`. Explicit and inferred type guards still narrow, while ordinary boolean callbacks keep the original value type. These signatures apply to eager records, ordered sequences, and lazy sequences without changing evaluation order.
+
+```ts
+import { createQueryable, WHERE, FIND, VALUES, isDefined, isNonNullish, negate } from "@ilokesto/queryable";
+
+const mixed = createQueryable<0 | false | "" | "cat" | null | undefined>({
+  zero: 0, no: false, empty: "", cat: "cat", nil: null, missing: undefined,
+});
+mixed[WHERE](Boolean)[VALUES](); // ["cat"]; Queryable<"cat">
+mixed[WHERE](isDefined)[VALUES](); // [0, false, "", "cat", null]
+mixed[WHERE](isNonNullish)[VALUES](); // [0, false, "", "cat"]
+mixed[WHERE](negate(isNonNullish))[VALUES](); // [null, undefined]
+mixed[FIND](() => false); // undefined
+```
+
+`isDefined` excludes only `undefined`; `isNonNullish` excludes `null` and `undefined`. `negate(predicate)` forwards all callback arguments and negates its result. Only the supplied, branded `isDefined` and `isNonNullish` helpers have complement narrowing. Arbitrary guards return a boolean predicate: a guard for positive numbers may also reject negative numbers, so its negation cannot safely exclude all numbers. Wrapping either helper in an ordinary callback loses the branded complement contract.
+
+`GROUP_BY_PROP(property)` correlates string discriminant keys with the union members that can have that property value. Unlike callback-based `GROUP_BY`, its groups narrow independently and remain optional, even for required discriminants or empty input.
+
+```ts
+import { createQueryable, GROUP_BY_PROP, VALUES } from "@ilokesto/queryable";
+
+type Pet = { readonly kind: "cat"; meow: true } | { readonly kind: "dog"; bark: true };
+const pets = createQueryable<Pet>({ alice: { kind: "cat", meow: true } });
+const groups = pets[GROUP_BY_PROP]("kind");
+groups.cat?.[VALUES](); // cat members only, with original key "alice"
+groups.dog; // undefined here; Queryable<dog member> | undefined
+```
+
+Optional string discriminants and union members without the property are supported. Missing or `undefined` values are skipped, not coerced to a group name. Group member types preserve their original optional and readonly properties conservatively; grouping does not rewrite an optional property as required. Numeric or mixed string/number discriminant properties are not accepted; there is no implicit numeric-key coercion guarantee. At runtime, only string property values form groups.
+
+Like `GROUP_BY`, `GROUP_BY_PROP` consumes its input immediately, including pending lazy work, and returns eager shallow snapshots. It reads each member's discriminant once in traversal order, preserves original member keys and record/sequence mode, supports empty and special string keys, and never repeats grouping work when a group is consumed again. Property getter errors propagate unchanged. Nested values remain shared references.
+
+## Selector ordering and explicit selection
+
+```ts
+import {
+  createQueryable, SORT_BY, MIN_BY, MAX_BY, TOP_K, NTH_BY, RANK_BY, ENTRIES,
+} from "@ilokesto/queryable";
+
+const scores = createQueryable({
+  alice: { team: "a", score: 8 },
+  bob: { team: "a", score: 9 },
+  charlie: { team: "b", score: 9 },
+});
+scores[SORT_BY](
+  { select: user => user.team },
+  { select: user => user.score, direction: "desc" },
+)[ENTRIES](); // bob, alice, charlie
+scores[MIN_BY]({ select: user => user.score }); // alice's value
+scores[MAX_BY]({ select: user => user.score }); // bob's value (first tie)
+scores[TOP_K](2, { select: user => user.score, direction: "desc" })[ENTRIES]();
+// [["bob", ...], ["charlie", ...]]
+scores[NTH_BY](-1, { select: user => user.score }); // charlie's value
+scores[RANK_BY]("charlie", { select: user => user.score }); // 2
+```
+
+Every operation requires one or more `OrderRule<T>` objects with a `select(value, key)` callback and optional `direction: "asc" | "desc"` (default `"asc"`). Rules compare lexicographically. `OrderKey` is `boolean | number | bigint | string | null | undefined`. Ascending category order is **boolean, number, bigint, string, null, undefined**, with no coercion across categories. Within categories, `false < true`, numbers and bigints use numeric order, and strings use JavaScript UTF-16 lexical order (not locale collation). `NaN` follows all other numbers, including `Infinity`; all NaNs tie. `-0` and `0` tie. Descending reverses the whole key order, including nullish placement. Equal complete rule keys retain input order in either direction.
+
+`SORT_BY` and `TOP_K` return ordered `QuerySequence<T>` results, retaining original keys, including integer and special keys. `SORT_BY` computes every rule once per entry, even when an earlier rule already distinguishes entries. Cached keys exist only during that consumption, never across lazy consumptions. Eager calls run immediately; lazy chains defer until consumed, rescan their live query record, and rerun selectors. Eager results retain a shallow snapshot of entries. Source records and entry arrays are never sorted in place; nested values remain shared references. Exceptions propagate unchanged, at the same eager/deferred boundary as `SORT`. Existing comparator `SORT`, repeated `SORT`, and `SORT` + `LIMIT`/`FIRST` are not rewritten.
+
+`MIN_BY` and `MAX_BY` are immediate terminals, even on lazy chains. They scan once, retain only the best entry and its rule keys, and replace it only for a strict improvement. They return **values**, not entries; a first tied value wins for both extrema. Empty input returns `undefined`, which is indistinguishable from a selected undefined value; use `RANK_BY` to test an existing key's position or `TOP_K(...)[ENTRIES]()` when key/presence information matters. Directions apply to extrema too: a descending rule's minimum has the greatest natural key.
+
+`TOP_K(k, ...rules)` retains at most K candidates in a bounded heap, then stably sorts the winners; it is ordered even when K exceeds the input length. K must be a nonnegative safe integer; `NaN`, infinities, fractions, negative values, and unsafe integers throw `RangeError` at the operation call, before consuming even a lazy source. `-0` means zero. K=0 does not read upstream or call selectors. Positive K consumes the full upstream input before yielding winners, even if followed by `FIRST` or `LIMIT`.
+
+`NTH_BY(index, ...rules)` returns the value at a **zero-based stable ordinal** in the same ordering. Negative indexes count from the end (`-1` is last); empty or out-of-range positions return `undefined`. Indexes must be safe integers; invalid indexes throw `RangeError` before consuming. `RANK_BY(recordKey, ...rules)` returns that key's zero-based stable ordinal, or `undefined` if absent. Ties receive distinct consecutive positions according to input order, not competition/dense ranks. Both are immediate terminals and cache each selector once per entry per call.
+
+For N entries and R rules, `SORT_BY` uses O(NR) cached-key storage plus sorting; extrema use O(R) working storage. `TOP_K` uses O(min(K,N)R) retained keys and O(N log(min(K,N)) + min(K,N) log(min(K,N))) comparison work. `NTH_BY` uses an iterative heap of at most `index + 1` candidates for nonnegative indexes or `abs(index)` candidates for negative indexes; no recursive partitioning occurs. `RANK_BY` buffers O(NR) keys, locates the requested key, and counts preceding candidates without sorting. These are explicit selection operations, not automatic optimizations. See [ordering measurements](../bench/ORDERING.md) for K/N and selector-cost trade-offs; no speedup or heap threshold is promised.
+
+## Partition, running accumulators, and effects
+
+`PARTITION(predicate)` immediately consumes the query once and returns
+`[matching, nonmatching]`, two independent eager shallow snapshots even for a lazy
+source. The predicate receives `(value, originalKey)` exactly once per entry in
+query order. Records retain native object ordering; sequences retain their input
+order. Type guards narrow only the matching side; the nonmatching side keeps `T`
+because a guard may recognize only some values of its claimed type. Empty sides
+remain typed queries. Later source assignments do not alter either snapshot, but
+referenced values are still shared.
+
+```ts
+import {
+  createQueryable, PARTITION, SCAN, TAP, EACH, THROUGH, LAZY, LIMIT, VALUES,
+} from "@ilokesto/queryable";
+
+const mixed = createQueryable<string | number>({ a: "one", b: 2 });
+const [strings, rest] = mixed[PARTITION](value => typeof value === "string");
+// Queryable<string>, Queryable<string | number>
+
+const totals = createQueryable({ a: 1, b: 2, c: 3 })[LAZY]()
+  [SCAN]((sum, value, key) => sum + value, () => 0)
+  [TAP]((value, key) => { console.info(key, value); });
+totals[LIMIT](2)[VALUES](); // [1, 3]; effects only for a and b
+totals[EACH]((value, key) => { console.info(key, value); }); // all entries, again
+const firstTwo = totals[THROUGH](query => query[LIMIT](2)[VALUES]()); // number[]
+```
+
+`SCAN(reducer, seedFactory)` emits one accumulator at every original input key,
+preserving record/sequence mode. It does not emit an extra seed entry. The reducer
+receives `(accumulator, value, originalKey)`. The required zero-argument factory
+runs once at the start of each consumption, including empty consumption; an
+unconsumed lazy chain or downstream `LIMIT(0)` does not call it. Return a fresh
+mutable seed from the factory to keep lazy consumptions independent.
+
+Accumulators are **not cloned**: if the reducer mutates and returns the same
+object, earlier emitted values alias that object and observe its later mutations.
+Return a new object at each step when independent historical values are needed.
+Empty input emits nothing and does not call the reducer.
+
+`TAP(effect)` retains every original key and value identity. Like `SCAN`, it runs
+immediately on eager queries and on demand in lazy queries; each lazy consumption
+repeats the work against the live source without memoization. `LIMIT`, `FIND`,
+`FIRST`, and `SOME` can stop downstream demand early. `EACH(effect)` is a terminal:
+it visits entries in order, returns `void`, and does not collect a result array.
+Both effects receive `(value, originalKey)`; returning `false` does not stop them.
+Empty queries call neither effect.
+
+`THROUGH(fn)` immediately calls `fn` once with the exact query object, without
+consuming it, and preserves the function's return type and result identity.
+All five methods require their receiver, use shared frozen prototypes, and
+propagate callback exceptions without wrapping or changing the thrown value.
+
 ## Value distinctness
 
 | Operation | Result |
@@ -324,6 +448,245 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Functional composition
+
+Lowercase adapters call the existing Symbol methods with their receiver intact.
+`where` and `find` also preserve the core Boolean and literal-false narrowing overloads.
+`where(predicate)`, `map(mapper)`, `limit(n)`, `pick(...keys)`, and
+`sort(comparator)` are data-last unary stages. `lazy` is itself a unary stage.
+`where` supports type guards; `map` changes the value type; `sort` and `lazy`
+transition records to sequences. Other transformations retain the input mode.
+`pick` still selects whole record keys, not fields within values.
+
+```ts
+import {
+  compose, createQueryable, lazy, limit, map, pipe, sort, values, where,
+} from "@ilokesto/queryable";
+
+const source = createQueryable<string | number>({ a: "one", b: 2, c: "three" });
+const strings = where((value: string | number) => typeof value === "string");
+const lengths = pipe(source, strings, map((value: string) => value.length));
+// Queryable<number>; callbacks can also receive the original key.
+const ordered = pipe(lengths, sort((a: number, b) => b - a), values);
+// number[]: [5, 3]
+
+// compose seeds the input type and builds a reusable left-to-right transform.
+const firstLength = compose<typeof source>()(strings, map((s: string) => s.length), limit(1), values);
+firstLength(source); // [3]
+firstLength(createQueryable({ other: "four" })); // [4]
+
+const live = pipe(source, lazy, strings);
+values(live); // ["one", "three"]
+source.a = "changed";
+values(live); // ["changed", "three"]; no memoization
+```
+
+`pipe(input, ...stages)` runs left to right. `compose<Input>()(...stages)` builds
+a reusable transform in the same left-to-right order. Its explicit input type
+seeds inference without a source instance, including record/sequence mode.
+Both accept **one to four typed unary stages**; there
+is no untyped overflow overload. Nest pipes or composed transforms for longer
+queries. This small fixed overload set bounds inference work rather than
+importing a large overload catalogue. Annotate reusable callback inputs when
+there is no source at the adapter creation site. Native unary functions can
+appear at any stage, including after a terminal produces an array or scalar.
+
+Unary terminals are `values`, `entries`, `toObject`, `count`, and `first`.
+Data-last `find(predicate)`, `some(predicate)`, and
+`reduce(reducer, initial)` are terminal stages too; `find` preserves guard
+narrowing. `reduce` passes the same explicit initial value on each invocation,
+so use an immutable reducer or create a fresh stage when the accumulator is
+mutable.
+
+These adapters do not add an engine, bound instance methods, shared cursors,
+or caching. Each invocation dispatches to the query it receives. Eager versus
+lazy callback timing, shallow opaque values, native record ordering, sequence
+order, buffering, short-circuiting, and exact thrown values are unchanged.
+Each lazy consumption starts fresh and sees the live source. Callbacks and
+explicit accumulator objects remain caller-owned.
+
+## Readonly shape snapshots
+
+`createShapeQueryable(input, keys)` is an opt-in, eager `ShapeQueryable<S>` view
+for heterogeneous records. The explicit string-key whitelist is required:
+TypeScript object types are open, so an object typed as `{ count: number }` can
+also have other runtime properties. Only requested, own, enumerable string keys
+are copied, in the input's native object order. Duplicate requests are ignored.
+Use string keys, including quoted numeric keys such as `"2"`; Symbol keys are
+not part of the shape.
+
+```ts
+import { createShapeQueryable, ENTRIES, PICK, MAP, WHERE, TO_OBJECT } from "@ilokesto/queryable";
+
+const input: { count: number; label: string; optional?: boolean } = {
+  count: 1, label: "one",
+};
+const snapshot = createShapeQueryable(input, ["count", "label", "optional"]);
+for (const [key, value] of snapshot[ENTRIES]()) {
+  if (key === "count") value.toFixed(); // number
+  if (key === "label") value.toUpperCase(); // string
+}
+snapshot[PICK]("optional")[TO_OBJECT](); // {}; optional is boolean | undefined
+snapshot[PICK]("unknown")[ENTRIES](); // []; element type is never
+snapshot[MAP](String)[PICK]("count")[TO_OBJECT](); // { count: "1" }
+snapshot[WHERE](value => typeof value === "number")[TO_OBJECT](); // { count: 1 }
+```
+
+The view exposes `COUNT`, `FIRST`, `VALUES`, `ENTRIES`, `TO_OBJECT`, `PICK`, `MAP`,
+and `WHERE` through shared, frozen Symbol methods. It has no direct record
+properties. `MAP` and `WHERE` execute immediately with `(value, originalKey)` in
+record order and propagate callback errors unchanged. `PICK` uses argument order
+subject to native integer-key ordering, ignores missing and duplicate keys, and
+keeps stored `undefined`. Empty inputs invoke no callbacks: count is zero, first
+is `undefined`, and containers are empty.
+
+The snapshot, its extracted arrays and tuples, and its extracted ordinary objects
+are shallowly frozen. Each terminal creates a fresh container; `ENTRIES` may share
+its already frozen tuples. Input objects and nested values are **not** frozen.
+Replacing or deleting an input property does not change the snapshot, but nested
+objects remain shared references. Methods require their receiver. Nested values
+are neither cloned nor made deeply readonly.
+
+All object output properties are optional, even for required input properties:
+static types do not prove own enumerable presence. `FIRST` always includes
+`undefined`; no chain claims to be nonempty. A bounded `PICK` retains only the
+intersection of requested keys and the snapshot's domain. A broad `string` request
+keeps the possible original domain, never invents an arbitrary key, and still
+does not guarantee presence. Optional values retain their `undefined` possibility;
+use `COUNT` or own-property checks to distinguish a stored `undefined` from absence.
+
+`ShapeQueryable<S>` describes the initial object shape; chain results use the
+exported `ShapeSnapshot<E>` type, where `E` is the possible entry tuple union.
+`ENTRIES` preserves that key/value tuple union. `MAP` retains the key domain but
+assigns its callback's inferred result type to every possible key; it does not
+pretend to infer a different return type per key. A `WHERE` type guard intersects
+each existing value type with the guard's type, including literal guards against
+broader values. A boolean predicate preserves the possible value types and can
+remove any key. Callback parameters are value and key unions; use `ENTRIES` when
+key-based control-flow narrowing is needed.
+
+The mutable `Queryable<T>` API is unchanged. To use its other operations, pass
+`snapshot[TO_OBJECT]()` to `createQueryable`; that creates a new mutable record
+and deliberately gives up closed-shape guarantees. Shape snapshots do not add
+memoization or alter the existing live `LAZY` contract.
+
+## Combining sources
+
+`CONCAT(sources, options?)` appends queries in array order, retaining their keys.
+The receiver comes first; a later source is acquired only when its first entry
+is demanded. `FLAT_MAP(mapper, options?)` calls `mapper(value, originalKey)` in
+source order and drains each returned iterable before advancing the source.
+The mapper emits explicit `[stringKey, value]` tuples, not unkeyed values:
+original keys remain available as callback context, while emitted keys define
+output identity. No payload fields are inspected or used to invent keys.
+
+Both accept the same `{ duplicateKeys: "error" | "first" | "last" }` option
+and share the factory identity boundary described above. The default rejects
+collisions, including through `ENTRIES`, `TO_OBJECT`, and `PICK`; `"last"`
+buffers before producing any entry. Input queries retain their own identity
+policies before the combined output policy applies.
+
+`ZIP(...queries)` pairs positions into an inferred heterogeneous tuple and uses
+the receiver's key. Each row pulls the receiver, then arguments left to right.
+The first exhausted input ends the result: earlier inputs may have supplied
+one unmatched value in that final round, while later inputs are not pulled.
+An empty receiver does not acquire later inputs. With no arguments, ZIP emits
+one-element tuples.
+
+All three return sequences because rows can expand or combine. They retain the
+receiver's evaluation mode: records and eager ordered sequences materialize at
+the call; lazy receivers defer work, stay live and repeatable, and acquire fresh
+iterators on every consumption. An empty expansion produces no entries, and no
+mapper runs for empty input. `LIMIT(0)` on a lazy result acquires nothing.
+Naturally exhausted iterators are not explicitly sent `return()`. Unfinished
+iterators close on shortest termination, early return, and factory, `next`, or
+callback failure, including nested and sibling iterators.
+Cleanup attempts every unfinished acquired iterator; a primary failure is never replaced
+by a cleanup failure. Without a primary failure, the first cleanup failure
+propagates. Entry tuples and ZIP row tuples are fresh; payload references remain
+shallow.
+
+```ts
+import {
+  createQueryable, CONCAT, ZIP, FLAT_MAP, LAZY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({ a: 1, b: 2 });
+left[LAZY]()[CONCAT]([createQueryable({ c: 3 })])[VALUES](); // [1, 2, 3]
+left[ZIP](createQueryable({ x: "one" }))[ENTRIES](); // [["a", [1, "one"]]]
+left[FLAT_MAP]((value, key) => [
+  [`${key}:original`, value],
+  [`${key}:double`, value * 2],
+])[ENTRIES](); // [["a:original", 1], ["a:double", 2], ["b:original", 2], ["b:double", 4]]
+```
+
+## Local entry buffers and adjacent groups
+
+These shared Symbol methods return ordered `QuerySequence` results. Each result
+key is the original key of its first included entry (its anchor), never a
+generated index or a selector result. Unique input keys therefore give unique
+anchors, including numeric and special keys. Each value is a fresh mutable array
+of fresh `[originalKey, value]` tuples; nested values remain shallow references.
+Overlapping windows do not share exposed tuples. Later pulls and repeated
+consumption do not modify previously returned buffers, and editing an exposed
+buffer does not edit retained eager snapshots.
+
+| Method | Buffer policy |
+| --- | --- |
+| `[CHUNK](size)` | Nonoverlapping batches; include the final nonempty partial chunk |
+| `[WINDOW](size, stride = 1, partial = false)` | Start at positions `0, stride, 2 * stride, ...`; overlap when stride is smaller than size, skip gaps when larger; emit only full windows unless partial is true |
+| `[PAIRWISE]()` | Complete overlapping pairs; `EntryPair<T>` is exactly `[[string, T], [string, T]]` |
+| `[SPLIT]((value, originalKey) => boolean)` | Matching entries are delimiters and are excluded; leading, repeated, and trailing delimiters never produce empty groups |
+| `[PARTITION_BY]((value, originalKey) => selected)` | Emit consecutive runs of equal selector results; include the final nonempty run |
+
+`size` and `stride` must be positive finite integers; invalid arguments throw
+`RangeError` immediately, even on a lazy or empty query, before acquiring input.
+Empty input yields no buffers. A short input yields a partial CHUNK, no default
+WINDOW or PAIRWISE, and a partial WINDOW only when requested. With partial windows
+enabled, every start position before the end can yield a nonempty trailing
+window, including multiple shrinking overlapping tails.
+
+```ts
+import {
+  createQueryable, LAZY, CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 1, c: 2, d: 1 });
+query[CHUNK](3)[ENTRIES]();
+// [["a", [["a", 1], ["b", 1], ["c", 2]]], ["d", [["d", 1]]]]
+query[WINDOW](2, 3, true)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[PAIRWISE]()[VALUES](); // three complete pairs of original entries
+query[LAZY]()[SPLIT](value => value === 2)[VALUES]();
+// [[["a", 1], ["b", 1]], [["d", 1]]]
+query[LAZY]()[PARTITION_BY](value => value)[VALUES]();
+// [[["a", 1], ["b", 1]], [["c", 2]], [["d", 1]]]
+```
+
+PARTITION_BY uses the SameValueZero equality contract of Set-based DISTINCT_BY:
+`NaN` equals `NaN`, `-0` equals `0`, and objects and Symbols compare by identity.
+Stored `undefined` and an `undefined` selector result are ordinary data, not
+missing-state sentinels. `A,A,B,A` forms three runs, unlike eager GROUP_BY, which
+still collects all equal string group keys together.
+
+On records and eager sequences these methods execute immediately and return
+snapshots. After LAZY they defer execution, read the live source again on each
+consumption, and create independent buffer state without memoization. Callbacks
+run once per pulled entry in source order with `(value, originalKey)`. SPLIT
+reads through the delimiter ending a group. PARTITION_BY must select one entry
+past a run to discover its boundary; that entry starts the next run without a
+second selector call. At source exhaustion no extra callback runs. Early exit
+and callback or source failures close acquired upstream generators; errors
+propagate unchanged and the next consumption starts fresh.
+
+Lazy CHUNK/WINDOW retain at most `size` original entries internally; PAIRWISE
+retains one previous entry. Fresh emitted copies also cost space proportional to
+the emitted buffer. SPLIT and PARTITION_BY may retain an unbounded current group
+until a delimiter, a changed selector, or source exhaustion arrives; they cannot
+produce a group from an infinite uninterrupted run. These bounds exclude
+upstream identity tracking, buffering operators, and results retained by the
+consumer. Eager evaluation necessarily stores all resulting buffers.
+
 ### Async entry sources and Promise normalization
 
 `createAsyncQuerySequence(factory, options?)` is a separate, always-deferred
@@ -454,6 +817,8 @@ acquisition. Abort also interrupts pending factory, `next`, value, and callback
 waits. Each wait removes its abort listener when settled; late external
 rejections remain handled. A consumed sequence with the same aborted signal
 rejects again; create a new controller/query to start a new lifetime.
+Buffered SORT, negative LIMIT, `"last"` collision results, and snapshot groups
+check cancellation before each output, including after a comparator aborts.
 
 Cancellation stops consumption, not arbitrary external work. Pass the received
 signal to that work for cooperative cancellation. On abort, an acquired iterator's
@@ -558,3 +923,124 @@ currently pending consumer `next()`, abort the configured signal rather than
 queueing `return()` behind it. Place awaited lifetime hooks downstream when their
 completion must precede terminal settlement. Prefetch can exhaust a short
 upstream, and run its `ON_COMPLETE`, before a downstream early result.
+## Explicit async fallback and buffered retry
+
+`query[FALLBACK]((error, signal) => fallbackEntries, { duplicateKeys })` switches
+once when its upstream factory, pull, awaited value, or callback fails. The
+factory receives the exact failure and inherited signal; it may return a sync
+or async entry source, directly or through a PromiseLike. Values are awaited.
+It does not run for normal completion, an empty source, early return, downstream
+callback/terminal failure, or a consumer body error. Fallback acquisition, pull,
+value, and cleanup failures propagate without another switch. Abort never
+selects a fallback and rejects with the signal's exact reason.
+
+```ts
+import {
+  createAsyncQuerySequence, createRetryAsyncQuerySequence, FALLBACK, VALUES,
+} from "@ilokesto/queryable";
+
+const recovered = createAsyncQuerySequence<number>(function* () {
+  yield ["a", 1];
+  throw new Error("source unavailable");
+})[FALLBACK](() => [["b", 2]]);
+await recovered[VALUES](); // [1, 2]
+
+let attempts = 0;
+const retried = createRetryAsyncQuerySequence<number>(function* () {
+  const attempt = ++attempts;
+  yield ["a", attempt];
+  if (attempt === 1) { throw new Error("try a fresh source"); }
+}, 1);
+await retried[VALUES](); // [2], never [1, 2]
+```
+
+Fallback retains the prefix already emitted before failure, then appends the
+replacement source. An empty replacement completes with that prefix; it does
+not erase output. One common key boundary covers both parts: default `"error"`
+throws `DuplicateKeyError`, `"first"` skips later collisions, and `"last"`
+buffers the entire combined stream and keeps the last value at each key's
+first position. This boundary policy is explicit and independent of the
+original source policy. With `"error"`/`"first"` a view may expose a prefix
+before a later failure; a rejected collecting terminal returns no partial array.
+With `"last"` no output appears before the combined stream completes.
+
+`createRetryAsyncQuerySequence(factory, retries, options)` is a separate
+fresh-entry-factory API, not a retry of a captured query cursor. `retries` must
+be a nonnegative safe integer and counts **additional** attempts: `0` means one
+attempt. It restarts from the beginning after factory, pull, awaited-value, or
+entry-validation failure, up to that bound; exhaustion throws the final attempt's
+exact failure. The options are the same `signal` and `duplicateKeys` policies as
+`createAsyncQuerySequence`. Empty success stops retries. Abort stops immediately,
+starts no later attempt, and preserves its exact reason; there is no delay,
+backoff, unlimited retry, or default recovery in existing operators.
+
+Each retry attempt buffers **O(N)** entries and exposes only a fully successful
+attempt, even to `FIRST()` or `LIMIT(1)`. Failed attempts' partial output is
+discarded, so it is not delivered twice and cannot collide with a later attempt.
+Infinite sources cannot produce a retry result. The factory must acquire a fresh
+cursor on every attempt and consumption. Reusing an iterator within one
+consumption stops retry with the preceding failure rather than calling `next()`
+on a closed generator and mistaking it for empty success.
+
+Only work inside the retry factory/source is retried. To retry a mapped query,
+build a fresh query inside that factory and return `iterateAsyncEntries(query)`;
+operators chained after `createRetryAsyncQuerySequence` run once over the
+successful buffer, and their failures are not retried. Source/callback side
+effects from failed attempts are **not rolled back** and may run again. Neither
+API promises transactional effects, exactly-once work, item skipping, or cursor
+resumption.
+
+Each consumption has independent fallback/attempt/duplicate state and calls its
+factories again; no result is memoized. Failure cleanup is awaited before
+fallback acquisition or the next retry, with the existing primary error winning
+over cleanup errors. Abort attempts closure without waiting for non-cooperative
+work. Nested `FINALIZE` hooks inside an attempt see that attempt's error/return;
+a hook outside successful recovery sees completion, and `ON_COMPLETE` runs only
+when its own upstream exhausts normally. Consumer break closes the active
+fallback; buffered retry has already exhausted and closed its source before
+exposing an entry.
+## Modular imports and bundle boundaries
+
+The ESM-only package exposes the existing root plus two explicit subpaths:
+
+| Entry | Exports | Runtime boundary |
+| --- | --- | --- |
+| `@ilokesto/queryable` | All existing constructors, Symbols, adapters, and types | Constructors retain the complete shared prototype |
+| `@ilokesto/queryable/operators` | `compose`, `count`, `entries`, `find`, `first`, `lazy`, `limit`, `map`, `pick`, `pipe`, `reduce`, `some`, `sort`, `toObject`, `values`, `where` | Existing synchronous adapters and core Symbols only; no root or async implementation import |
+| `@ilokesto/queryable/symbols` | All public operation Symbols | Reexports their single definitions from core and family modules; no query constructors |
+
+```ts
+import type { QuerySequence } from "@ilokesto/queryable";
+import { map, pipe, values, where } from "@ilokesto/queryable/operators";
+import { VALUES } from "@ilokesto/queryable/symbols";
+
+export function doubled(query: QuerySequence<number>): number[] {
+  return pipe(query, where((n: number) => n > 1), map((n: number) => n * 2), values);
+}
+
+export function read(query: QuerySequence<number>): number[] {
+  return query[VALUES]();
+}
+```
+
+These consumers receive an existing query. Creating that query with a root
+constructor still pays for the full shared prototype: choosing operator imports
+does not make a whole constructor-and-chain consumer operator-sized. The
+`symbols` entry also loads its family modules in native ESM; it is not a
+promise of one module per Symbol. Bundlers can remove unused exports.
+
+Root and subpath imports within one resolved package instance share exactly the
+same Symbols and adapter functions. Record and sequence methods retain their
+existing shared identities. Import order does not change this contract.
+Independently bundled or separately installed copies are separate instances;
+Symbols are not registered globally. `where`/`find` keep type-guard, `Boolean`,
+and literal-`false` narrowing, and all existing execution and buffering rules
+remain in effect.
+
+Each public entry supplies ESM and declaration export conditions. Import query
+types from the root with `import type`; private paths such as `/functional`,
+`/core-symbols`, `/dist/index.js`, and `/operators/where` are not public exports.
+Runtime dependencies remain empty. See `bench/modular-results.md` and its JSON
+artifacts in the repository for measured constructor, terminal, operator, and
+complete-chain output sizes and import graphs; `sideEffects: false` alone is
+not evidence of a smaller consumer.

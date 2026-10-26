@@ -1,11 +1,14 @@
 import {
-  AT, COUNT_BY, EVERY, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
-  INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, MAP_CONCURRENT, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
-  ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable, iterateAsyncEntries,
+  MAP_CONCURRENT,
+  AT, COUNT_BY, EVERY, FALLBACK, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
+  INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
+  ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable,
+  createRetryAsyncQuerySequence, iterateAsyncEntries,
 } from "@ilokesto/queryable";
 import type { ConcurrentMapOptions, Queryable, QuerySequence } from "@ilokesto/queryable";
 
 export type { Queryable, QuerySequence } from "@ilokesto/queryable";
+export * from "./predicate-types.js";
 
 const input: Readonly<Record<string, string | number>> = { first: "one", second: 2 };
 export const record = createQueryable(input);
@@ -34,6 +37,14 @@ export const concurrentMapped = createAsyncQuerySequence(() => [["__proto__", 1]
   }, concurrentOptions);
 export const concurrentView: AsyncIterable<[string, string]> = iterateAsyncEntries(concurrentMapped);
 export const asyncView: AsyncIterable<[string, number]> = iterateAsyncEntries(asyncQuery);
+export const recoveredQuery = createAsyncQuerySequence<number>(() => { throw new Error("source"); })
+  [FALLBACK]((error, signal) => {
+    const failure: unknown = error;
+    void failure;
+    signal?.throwIfAborted();
+    return [["fallback", Promise.resolve("recovered")]];
+  }, { duplicateKeys: "first" });
+export const retriedQuery = createRetryAsyncQuerySequence(() => [["a", Promise.resolve(7)]] as const, 2);
 export const lifetimeQuery = createAsyncQuerySequence(
   signal => [["a", signal?.aborted ? 0 : 1]],
   { signal: new AbortController().signal },
