@@ -1,3 +1,20 @@
+import type { Truthy } from "./predicates.js";
+export { isDefined, isNonNullish, negate } from "./predicates.js";
+export type { Truthy } from "./predicates.js";
+
+import {
+  MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K,
+  extremum, nthValue, rankKey, sortByEntries, topEntries, validatePosition,
+} from "./ordering.js";
+import type { OrderRules } from "./ordering.js";
+export { MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K } from "./ordering.js";
+export type { OrderKey, OrderRule, OrderRules } from "./ordering.js";
+
+import { EACH, PARTITION, SCAN, TAP, THROUGH, eachEntry, partitionEntries, scanEntries, tapEntries, through } from "./stateful.js";
+import type { Stateful } from "./stateful.js";
+
+export { EACH, PARTITION, SCAN, TAP, THROUGH } from "./stateful.js";
+
 import {
   DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY,
   distinctEntries, distinctUntilChangedEntries, identity,
@@ -29,6 +46,7 @@ export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js"
 
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
@@ -68,6 +86,10 @@ export const LIMIT = Symbol("limit");
  * @example query[GROUP_BY](value => value.active ? "active" : "inactive")
  */
 export const GROUP_BY = Symbol("group_by");
+/** Group by a string discriminant, narrowing each group's union members.
+ * @example query[GROUP_BY_PROP]("kind").cat?.[VALUES]()
+ */
+export const GROUP_BY_PROP = Symbol("group_by_prop");
 /** Count records.
  * @example query[COUNT]()
  */
@@ -109,12 +131,31 @@ const ITERATE = Symbol("iterate");
 type Entry<T> = readonly [string, T];
 type Mode = "record" | "sequence";
 type Result<T, M extends Mode> = M extends "record" ? Queryable<T> : QuerySequence<T>;
+type PropertyKeys<T> = T extends unknown ? keyof T : never;
+type PropertyValue<T, P extends PropertyKey> = T extends unknown ? P extends keyof T ? T[P] : never : never;
+type StringProperty<T> = {
+  [P in PropertyKeys<T> & string]: Exclude<PropertyValue<T, P>, string | undefined> extends never
+    ? Extract<PropertyValue<T, P>, string> extends never ? never : P
+    : never;
+}[PropertyKeys<T> & string];
+type PropertyMember<T, P extends PropertyKey, K extends string> =
+  T extends unknown ? P extends keyof T ? [T[P] & K] extends [never] ? never : T : never : never;
+type PropertyGroups<T, P extends PropertyKey, M extends Mode> = {
+  [K in Extract<PropertyValue<T, P>, string>]?: Result<PropertyMember<T, P, K>, M>;
+};
 
 interface Source<T> {
   [ITERATE](): Iterable<Entry<T>>;
 }
 
 interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
+  /** Return the first minimum/maximum; empty input returns undefined. */
+  [MIN_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  [MAX_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  /** Select a zero-based position; negative positions count from the end. */
+  [NTH_BY](this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined;
+  /** Read the zero-based stable ordinal of an existing record key. */
+  [RANK_BY](this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined;
   [TO_MAP](this: Source<T>): Map<string, T>;
   [TO_SET](this: Source<T>): Set<T>;
   [KEYS](this: Source<T>): string[];
@@ -152,6 +193,8 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   /** Find a matching value and preserve type guard narrowing.
    * @example query[FIND]((value): value is string => typeof value === "string")
    */
+  [FIND](this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
+  [FIND](this: Source<T>, predicate: (value: T, key: string) => false): undefined;
   [FIND]<S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
   [FIND](this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
   /** Return true on the first match, or false for an empty query.
@@ -172,7 +215,11 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T> {
+interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M> {
+  /** Cache selector keys once per entry per consumption and sort lexicographically. */
+  [SORT_BY](this: Result<T, M>, ...rules: OrderRules<T>): QuerySequence<T>;
+  /** Keep at most K winners, then return them in stable sorted order. */
+  [TOP_K](this: Result<T, M>, k: number, ...rules: OrderRules<T>): QuerySequence<T>;
   /** Keep the first entry for each value, using SameValueZero/reference identity. */
   [DISTINCT](this: Result<T, M>): Result<T, M>;
   /** Keep the first entry for each selected value; selectors receive original keys. */
@@ -185,6 +232,8 @@ interface Operations<T, M extends Mode> extends Terminals<T> {
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
+  [WHERE](this: Result<T, M>, predicate: BooleanConstructor): Result<Truthy<T>, M>;
+  [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => false): Result<never, M>;
   [WHERE]<S extends T>(this: Result<T, M>, predicate: (value: T, key: string) => value is S): Result<S, M>;
   [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => boolean): Result<T, M>;
   /** Stable sort into a sequence. Lazy sequences defer sorting until consumption.
@@ -228,6 +277,11 @@ interface Operations<T, M extends Mode> extends Terminals<T> {
    * @example query[GROUP_BY](value => value.active ? "yes" : "no")
    */
   [GROUP_BY]<K extends string>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Partial<Record<K, Result<T, M>>>;
+  /** Eagerly group string property values; missing/undefined discriminants are skipped.
+   * Optional members remain optional in their original value type.
+   * @example query[GROUP_BY_PROP]("kind").cat?.[VALUES]()
+   */
+  [GROUP_BY_PROP]<P extends StringProperty<T>>(this: Result<T, M>, property: P): PropertyGroups<T, P, M>;
   /** Make a lazy view. Each consumption re-runs pending callbacks; no caching.
    * @example query[LAZY]()[MAP](value => value.name)[FIRST]()
    */
@@ -261,35 +315,6 @@ function* recordEntries<T>(record: Readonly<Record<string, T>>): Generator<Entry
       // The enumerated own key exists; T itself may legitimately include undefined.
       yield [key, record[key] as T];
     }
-  }
-}
-
-// Store the shared generator and its arguments, rather than a closure per chain step.
-class Deferred<T, A extends unknown[]> implements Iterable<T> {
-  constructor(
-    private readonly generate: (...args: A) => Iterable<T>,
-    private readonly args: A,
-  ) {}
-  [Symbol.iterator](): Iterator<T> {
-    return this.generate(...this.args)[Symbol.iterator]();
-  }
-}
-
-function defer<T, A extends unknown[]>(generate: (...args: A) => Iterable<T>, ...args: A): Iterable<T> {
-  return new Deferred(generate, args);
-}
-
-function* filterEntries<T>(source: Iterable<Entry<T>>, predicate: (value: T, key: string) => boolean): Generator<Entry<T>> {
-  for (const entry of source) {
-    if (predicate(entry[1], entry[0])) {
-      yield entry;
-    }
-  }
-}
-
-function* mapEntries<T, U>(source: Iterable<Entry<T>>, fn: (value: T, key: string) => U): Generator<Entry<U>> {
-  for (const [key, value] of source) {
-    yield [key, fn(value, key)];
   }
 }
 
@@ -340,6 +365,18 @@ function fromEntries<T>(entries: Iterable<Entry<T>>): Queryable<T> {
   return result;
 }
 
+function propertyGroupKey<T>(value: T, property: string): string | undefined {
+  if ((typeof value === "object" && value !== null || typeof value === "function") && property in value) {
+    const groupKey: unknown = Reflect.get(value, property);
+    if (typeof groupKey === "string") {
+      return groupKey;
+    }
+  }
+  return undefined;
+}
+
+function find<T>(this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
+function find<T>(this: Source<T>, predicate: (value: T, key: string) => false): undefined;
 function find<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined {
@@ -364,6 +401,23 @@ function lookupEntry<T>(this: Source<T>, predicate: (value: T, key: string) => b
 }
 
 const terminals = {
+  [MIN_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, false);
+  },
+  [MAX_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, true);
+  },
+  [NTH_BY]<T>(this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined {
+    validatePosition(index, true);
+    return nthValue(this[ITERATE](), index, rules);
+  },
+  [RANK_BY]<T>(this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined {
+    return rankKey(this[ITERATE](), key, rules);
+  },
+  [EACH]<T>(this: Source<T>, effect: (value: T, key: string) => void): void {
+    eachEntry(this[ITERATE](), effect);
+  },
+  [THROUGH]: through,
   [TO_MAP]<T>(this: Source<T>): Map<string, T> {
     return new Map(this[ITERATE]());
   },
@@ -474,10 +528,25 @@ const terminals = {
   },
 };
 
+function where<T>(this: Queryable<T>, predicate: BooleanConstructor): Queryable<Truthy<T>>;
+function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => false): Queryable<never>;
 function where<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T> {
   return fromEntries(filterEntries(recordEntries(this), predicate));
+}
+
+function partition<T, S extends T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => value is S,
+): [Queryable<S>, Queryable<T>];
+function partition<T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => boolean,
+): [Queryable<T>, Queryable<T>];
+function partition<T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => boolean,
+): [Queryable<T>, Queryable<T>] {
+  const [matching, nonmatching] = partitionEntries(recordEntries(this), predicate);
+  return [fromEntries(matching), fromEntries(nonmatching)];
 }
 
 function takeWhile<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
@@ -488,6 +557,13 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [SORT_BY]<T>(this: Queryable<T>, ...rules: OrderRules<T>): QuerySequence<T> {
+    return new Sequence(sortByEntries(recordEntries(this), rules), false);
+  },
+  [TOP_K]<T>(this: Queryable<T>, k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return new Sequence(topEntries(recordEntries(this), k, rules), false);
+  },
   [DISTINCT]<T>(this: Queryable<T>): Queryable<T> {
     return fromEntries(distinctEntries(recordEntries(this), identity));
   },
@@ -517,6 +593,15 @@ const queryablePrototype = {
     return recordEntries(this);
   },
   [WHERE]: where,
+  [PARTITION]: partition,
+  [SCAN]<T, A>(
+    this: Queryable<T>, reducer: (accumulator: A, value: T, key: string) => A, seed: () => A,
+  ): Queryable<A> {
+    return fromEntries(scanEntries(recordEntries(this), reducer, seed));
+  },
+  [TAP]<T>(this: Queryable<T>, effect: (value: T, key: string) => void): Queryable<T> {
+    return fromEntries(tapEntries(recordEntries(this), effect));
+  },
   [SORT]<T>(this: Queryable<T>, compareFn: (a: T, b: T) => number): QuerySequence<T> {
     return new Sequence(sortEntries(recordEntries(this), compareFn), false);
   },
@@ -557,13 +642,25 @@ const queryablePrototype = {
     }
     return groups;
   },
+  [GROUP_BY_PROP]<T, P extends StringProperty<T>>(this: Queryable<T>, property: P): PropertyGroups<T, P, "record"> {
+    const groups: Partial<Record<string, Queryable<T>>> = Object.create(null);
+    for (const [key, value] of recordEntries(this)) {
+      const groupKey = propertyGroupKey(value, property);
+      if (groupKey !== undefined) {
+        const group = groups[groupKey] ?? (groups[groupKey] = createQueryable<T>({}));
+        group[key] = value;
+      }
+    }
+    // Each string key was read from this member's discriminant, once.
+    return groups as PropertyGroups<T, P, "record">;
+  },
   [LAZY]<T>(this: Queryable<T>): QuerySequence<T> {
     return new Sequence(defer(recordEntries, this), true);
   },
 };
 
 // Both implementations use exactly the same terminal functions, not bound copies.
-interface Sequence<T> extends Terminals<T> {}
+interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof EACH | typeof THROUGH> {}
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
@@ -573,6 +670,14 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [SORT_BY](...rules: OrderRules<T>): QuerySequence<T> {
+    return this.next(defer(sortByEntries, this.source, rules));
+  }
+  [TOP_K](k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return this.next(defer(topEntries, this.source, k, rules));
   }
 
   [DISTINCT](): QuerySequence<T> {
@@ -606,13 +711,27 @@ class Sequence<T> implements QuerySequence<T> {
     return groups;
   }
 
+  [WHERE](predicate: BooleanConstructor): QuerySequence<Truthy<T>>;
+  [WHERE](predicate: (value: T, key: string) => false): QuerySequence<never>;
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
   [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T>;
-  [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T> {
-    return this.next(defer(filterEntries, this.source, predicate));
+  [WHERE](predicate: (value: T, key: string) => boolean): Source<T> {
+    return this.next(this.lazy ? fuseWhere(this.source, predicate) : defer(filterEntries, this.source, predicate));
   }
   [MAP]<U>(fn: (value: T, key: string) => U): QuerySequence<U> {
-    return this.next(defer(mapEntries, this.source, fn));
+    return this.next(this.lazy ? fuseMap(this.source, fn) : defer(mapEntries, this.source, fn));
+  }
+  [PARTITION]<S extends T>(predicate: (value: T, key: string) => value is S): [QuerySequence<S>, QuerySequence<T>];
+  [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>];
+  [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>] {
+    const [matching, nonmatching] = partitionEntries(this.source, predicate);
+    return [new Sequence(matching, false), new Sequence(nonmatching, false)];
+  }
+  [SCAN]<A>(reducer: (accumulator: A, value: T, key: string) => A, seed: () => A): QuerySequence<A> {
+    return this.next(defer(scanEntries, this.source, reducer, seed));
+  }
+  [TAP](effect: (value: T, key: string) => void): QuerySequence<T> {
+    return this.next(defer(tapEntries, this.source, effect));
   }
   [SORT](compareFn: (a: T, b: T) => number): QuerySequence<T> {
     return new Sequence(
@@ -657,6 +776,23 @@ class Sequence<T> implements QuerySequence<T> {
       }
     }
     return groups;
+  }
+  [GROUP_BY_PROP]<P extends StringProperty<T>>(property: P): PropertyGroups<T, P, "sequence"> {
+    const entries: Partial<Record<string, Entry<T>[]>> = Object.create(null);
+    for (const entry of this.source) {
+      const groupKey = propertyGroupKey(entry[1], property);
+      if (groupKey !== undefined) {
+        (entries[groupKey] ??= []).push(entry);
+      }
+    }
+    const groups: Partial<Record<string, QuerySequence<T>>> = Object.create(null);
+    for (const key in entries) {
+      const group = entries[key];
+      if (group) {
+        groups[key] = new Sequence(group, false);
+      }
+    }
+    return groups as PropertyGroups<T, P, "sequence">;
   }
   [LAZY](): QuerySequence<T> {
     return new Sequence(this.source, true);
