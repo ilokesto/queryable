@@ -104,6 +104,42 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
 
+## Bounds and prefixes
+
+These shared Symbol operations retain original keys and query mode: records return records, and ordered or lazy sequences return sequences. They execute immediately on eager queries and defer work on lazy queries.
+
+| Operation | Result |
+| --- | --- |
+| `[SKIP](n)` | Exclude the first `n` entries |
+| `[TAKE_WHILE]((value, key) => boolean)` | Keep the matching prefix, excluding the first mismatch |
+| `[DROP_WHILE]((value, key) => boolean)` | Exclude the matching prefix, including the first mismatch in the result |
+| `[TAKE_LAST](n)` | Keep the last `n` entries in input order |
+| `[DROP_LAST](n)` | Exclude the last `n` entries in input order |
+
+All three numeric bounds use the same size normalization: truncate fractions toward zero, clamp negative sizes (including `-Infinity`) to zero, treat `NaN` as zero, and retain `Infinity`. Thus `SKIP(0)` and `DROP_LAST(0)` keep everything, while `TAKE_LAST(0)` is empty and does not read upstream. This does not change the signed `slice(0, n)` contract of `LIMIT`.
+
+```ts
+import {
+  createQueryable, LAZY, SKIP, LIMIT, TAKE_WHILE, DROP_WHILE,
+  TAKE_LAST, DROP_LAST, VALUES,
+} from "@ilokesto/queryable";
+
+const query = createQueryable({ a: 1, b: 2, c: 3, d: 2 });
+query[LAZY]()[SKIP](1)[LIMIT](2)[VALUES](); // [2, 3]
+query[TAKE_WHILE](n => n < 3)[VALUES](); // [1, 2]
+query[DROP_WHILE](n => n < 3)[VALUES](); // [3, 2]
+query[TAKE_LAST](2)[VALUES](); // [3, 2]
+query[DROP_LAST](2)[VALUES](); // [1, 2]
+```
+
+Use `SKIP(start)[LIMIT](length)` for a nonnegative window; there is no separate `SLICE` operation. Integer record keys still follow native object ordering; sequence keys retain their upstream order. Stored `undefined` and special keys are retained normally.
+
+`TAKE_WHILE` stops at the first mismatch and supports type guards. `DROP_WHILE` stops calling its predicate after the first mismatch; its remaining values are not narrowed. Both predicates receive the original key.
+
+On lazy queries, `SKIP(n)[FIRST]()` pulls at most `n + 1` entries and `TAKE_WHILE(predicate)[LIMIT](k)` stops after the required prefix without testing a later entry. `TAKE_LAST(n)` must finish upstream before yielding anything and stores at most `n` entries in a ring buffer for finite sizes. `DROP_LAST(n)` uses at most `n` buffered entries and needs `n + 1` upstream entries for its first output; early terminals can then stop it. Neither operation moves ahead of sorting, sequence `PICK`, or negative `LIMIT` barriers.
+
+`SKIP(Infinity)` and `DROP_LAST(Infinity)` consume upstream and return no entries; the latter stores none. `TAKE_LAST(Infinity)` consumes and buffers the entire input before returning all entries. Each consumption gets fresh counters, predicate state, and buffers, including after early termination or an error. Lazy callbacks and errors remain deferred, and mutations between consumptions remain visible.
+
 ## Iterable sources and key identity
 
 `createQuerySequence(factory, options?)` creates a lazy sequence from a factory of
