@@ -144,3 +144,48 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 중복 키를 조용히 덮어쓰지 않고 거부합니다. PICK·그룹·정렬·컬렉션 출력도
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
+
+## 여러 원본 결합
+
+`CONCAT(sources, options?)`는 수신자 뒤에 배열 순서대로 쿼리를 연결하고 각 키를
+유지합니다. 뒤쪽 원본은 그 첫 entry가 필요할 때만 획득합니다.
+`FLAT_MAP(mapper, options?)`는 원본 순서대로 `mapper(value, originalKey)`를
+호출하고 반환된 iterable을 모두 소비한 뒤 다음 원본 entry로 진행합니다.
+mapper는 키 없는 값 대신 명시적인 `[stringKey, value]` 튜플을 출력합니다.
+원본 키는 콜백 문맥에 유지되며 출력 키가 새 identity입니다. 값의 필드를
+검사하거나 암묵적으로 키를 만들지 않습니다.
+
+두 연산은 위 factory와 같은 `{ duplicateKeys: "error" | "first" | "last" }`
+옵션과 공통 identity 경계를 사용합니다. 기본값은 ENTRIES·TO_OBJECT·PICK을
+통한 소비에서도 충돌을 거부하며, `"last"`는 첫 출력 전에 전체를 버퍼링합니다.
+입력 쿼리 자체의 identity 정책을 먼저 적용한 뒤 결합 결과 정책을 적용합니다.
+
+`ZIP(...queries)`는 위치별 값을 이종 타입 튜플로 추론하며 수신자 키를 유지합니다.
+매 행마다 수신자부터 인자를 왼쪽에서 오른쪽으로 읽고, 첫 종료 원본에서
+전체를 끝냅니다. 마지막 회차에서 앞쪽 원본은 짝 없는 값을 하나 읽을 수 있지만
+뒤쪽 원본은 읽지 않습니다. 수신자가 비어 있으면 뒤쪽 원본을 획득하지 않습니다.
+인자가 없으면 길이 1 튜플을 출력합니다.
+
+세 연산은 행 확장·결합을 표현하므로 항상 시퀀스를 반환하며 수신자의 실행 모드를
+유지합니다. 레코드와 eager 정렬 시퀀스는 호출 즉시 계산하고, lazy 수신자는
+소비까지 지연하며 live·repeatable·nonmemoized 상태로 매번 새 iterator를 획득합니다.
+빈 확장은 entry가 없고 빈 입력에서는 mapper를 호출하지 않습니다. lazy 결과의
+`LIMIT(0)`은 원본을 획득하지 않습니다. 정상 소진·최단 종료·조기 반환과
+factory·next·콜백 예외 시 중첩 원본과 형제 원본을 포함한 모든 획득 iterator를
+닫습니다. 정리 예외가 있어도 나머지 정리를 시도하고 원래 예외를 덮어쓰지 않습니다.
+원래 예외가 없으면 첫 정리 예외를 전파합니다. entry와 ZIP 행 튜플은 새로 만들되
+값 참조는 얕게 유지합니다.
+
+```ts
+import {
+  createQueryable, CONCAT, ZIP, FLAT_MAP, LAZY, ENTRIES, VALUES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({ a: 1, b: 2 });
+left[LAZY]()[CONCAT]([createQueryable({ c: 3 })])[VALUES](); // [1, 2, 3]
+left[ZIP](createQueryable({ x: "one" }))[ENTRIES](); // [["a", [1, "one"]]]
+left[FLAT_MAP]((value, key) => [
+  [`${key}:original`, value],
+  [`${key}:double`, value * 2],
+])[ENTRIES](); // [["a:original", 1], ["a:double", 2], ["b:original", 2], ["b:double", 4]]
+```

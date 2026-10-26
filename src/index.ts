@@ -1,5 +1,8 @@
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { CONCAT, ZIP, FLAT_MAP, concatEntries, flatMapEntries, managedEntries, zipEntries } from "./combine.js";
+
+export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
@@ -66,12 +69,14 @@ export const REDUCE = Symbol("reduce");
 export const LAZY = Symbol("lazy");
 
 const ITERATE = Symbol("iterate");
+const COMBINE = Symbol("combine");
 type Entry<T> = readonly [string, T];
 type Mode = "record" | "sequence";
 type Result<T, M extends Mode> = M extends "record" ? Queryable<T> : QuerySequence<T>;
 
 interface Source<T> {
   [ITERATE](): Iterable<Entry<T>>;
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U>;
 }
 
 interface Terminals<T> extends Source<T> {
@@ -111,6 +116,12 @@ interface Terminals<T> extends Source<T> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T> {
+  /** Append explicitly keyed sources; duplicateKeys defaults to error. */
+  [CONCAT]<U>(this: Result<T, M>, sources: readonly (Queryable<U> | QuerySequence<U>)[], options?: QuerySequenceOptions): QuerySequence<T | U>;
+  /** Pair positions, retaining the receiver key; pulls left to right until shortest. */
+  [ZIP]<U extends readonly unknown[]>(this: Result<T, M>, ...sources: { [K in keyof U]: Queryable<U[K]> | QuerySequence<U[K]> }): QuerySequence<[T, ...U]>;
+  /** Emit explicit identities; mapper receives (value, originalKey). */
+  [FLAT_MAP]<U>(this: Result<T, M>, mapper: (value: T, originalKey: string) => Iterable<Entry<U>>, options?: QuerySequenceOptions): QuerySequence<U>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -314,8 +325,44 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
   return fromEntries(filterEntries(recordEntries(this), predicate));
 }
 
+const combinationMethods = {
+  [CONCAT]<T, U>(this: Source<T>, sources: readonly Source<U>[], options?: QuerySequenceOptions): QuerySequence<T | U> {
+    const factories: EntrySourceFactory<T | U>[] = [
+      () => this[ITERATE](),
+      ...sources.map(source => () => source[ITERATE]()),
+    ];
+    return this[COMBINE](() => concatEntries(factories), options);
+  },
+  [ZIP]<T, U extends readonly unknown[]>(
+    this: Source<T>,
+    ...sources: { [K in keyof U]: Source<U[K]> }
+  ): QuerySequence<[T, ...U]> {
+    const factories: EntrySourceFactory<unknown>[] = [
+      () => this[ITERATE](),
+      ...sources.map(source => () => source[ITERATE]()),
+    ];
+    return this[COMBINE](function* () {
+      for (const [key, values] of zipEntries(factories)) {
+        // zipEntries emits exactly one value per source, in this tuple's source order.
+        yield [key, values as [T, ...U]];
+      }
+    });
+  },
+  [FLAT_MAP]<T, U>(
+    this: Source<T>,
+    mapper: (value: T, originalKey: string) => Iterable<Entry<U>>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    return this[COMBINE](() => flatMapEntries(() => this[ITERATE](), mapper), options);
+  },
+};
+
 const queryablePrototype = {
   ...terminals,
+  ...combinationMethods,
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
+    return new Sequence(Array.from(iterateEntries(createQuerySequence(factory, options))), false);
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
@@ -353,12 +400,20 @@ const queryablePrototype = {
 };
 
 // Both implementations use exactly the same terminal functions, not bound copies.
-interface Sequence<T> extends Terminals<T> {}
+interface Sequence<T> extends Terminals<T> {
+  [CONCAT]: Operations<T, "sequence">[typeof CONCAT];
+  [ZIP]: Operations<T, "sequence">[typeof ZIP];
+  [FLAT_MAP]: Operations<T, "sequence">[typeof FLAT_MAP];
+}
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
   [ITERATE](): Iterable<Entry<T>> {
     return this.source;
+  }
+
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
+    return this.next(iterateEntries(createQuerySequence(factory, options)));
   }
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
@@ -405,7 +460,7 @@ class Sequence<T> implements QuerySequence<T> {
   }
 }
 
-Object.assign(Sequence.prototype, terminals);
+Object.assign(Sequence.prototype, terminals, combinationMethods);
 Object.freeze(Sequence.prototype);
 // A null root makes "__proto__", "constructor", and "toString" ordinary data keys.
 Object.setPrototypeOf(queryablePrototype, null);
@@ -449,7 +504,7 @@ export function createQuerySequence<T>(
     case "error":
     case "first":
     case "last":
-      return new Sequence(defer(checkedEntries, factory, policy), true);
+      return new Sequence(defer(checkedEntries, () => managedEntries(factory), policy), true);
     default: {
       const unsupported: never = policy;
       throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
