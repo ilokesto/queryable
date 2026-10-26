@@ -13,10 +13,12 @@ type Entry<T> = readonly [string, T];
 export function* managedEntries<T>(factory: EntrySourceFactory<T>): Generator<Entry<T>> {
   const iterator = factory()[Symbol.iterator]();
   let failed = false;
+  let exhausted = false;
   try {
     while (true) {
       const step = iterator.next();
       if (step.done) {
+        exhausted = true;
         return;
       }
       yield step.value;
@@ -26,7 +28,9 @@ export function* managedEntries<T>(factory: EntrySourceFactory<T>): Generator<En
     throw error;
   } finally {
     try {
-      iterator.return?.();
+      if (!exhausted) {
+        iterator.return?.();
+      }
     } catch (error) {
       if (!failed) {
         throw error;
