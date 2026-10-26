@@ -200,7 +200,13 @@ function sortEntries<T>(source: Iterable<Entry<T>>, compareFn: (a: T, b: T) => n
 }
 
 function* pickEntries<T>(source: Iterable<Entry<T>>, keys: readonly string[]): Generator<Entry<T>> {
-  const entries = new Map(source);
+  const requested = new Set(keys);
+  const entries = new Map<string, T>();
+  for (const [key, value] of source) {
+    if (requested.has(key)) {
+      entries.set(key, value);
+    }
+  }
   for (const key of keys) {
     if (entries.has(key)) {
       // has() distinguishes a stored undefined from an absent record.
@@ -258,14 +264,22 @@ const terminals = {
     return false;
   },
   [COUNT]<T>(this: Source<T>): number {
+    const source = this[ITERATE]();
+    if (Array.isArray(source)) {
+      return source.length;
+    }
     let count = 0;
-    for (const _entry of this[ITERATE]()) {
+    for (const _entry of source) {
       count++;
     }
     return count;
   },
   [FIRST]<T>(this: Source<T>): T | undefined {
-    for (const [, value] of this[ITERATE]()) {
+    const source = this[ITERATE]();
+    if (Array.isArray(source)) {
+      return source[0]?.[1];
+    }
+    for (const [, value] of source) {
       return value;
     }
     return undefined;
