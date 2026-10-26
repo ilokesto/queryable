@@ -19,7 +19,7 @@ sibling checkout paths.
   examples.
 - The website may depend on registry documentation tooling only. Do not add
   sibling workspace dependencies, an npm runtime alias, or documentation deployment.
-- Run from this repository with Node 22 and pnpm 10.17.1:
+- Run from this repository with Node 24 (`.nvmrc`) and pnpm 10.17.1:
   `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm typecheck`,
   `pnpm test`, `pnpm migrate:verify`, and the four `pnpm docs:*` quality
   commands.
@@ -29,5 +29,27 @@ sibling checkout paths.
 - `NPM_TOKEN` may come from the ilokesto organization Actions secret with access
   granted to this repository. Do not override it with a different repository or
   Production environment secret.
-- Preserve archived Git refs, source manifest, public API, version, and all
-  original tests. No persistence or runtime API changes.
+- Preserve archived Git refs, source manifest, existing public API, version, and all
+  original tests. No persistence or unrelated runtime API changes.
+
+## Additive roadmap contracts
+
+- Explicitly authorized roadmap work may add public APIs; the existing public
+  API and all original tests remain compatibility requirements. The restriction
+  above still excludes unrelated runtime API changes and persistence.
+- New APIs must use shared Symbol-keyed methods with zero runtime dependencies.
+  Specify empty-input behavior, distinguish stored `undefined` from absence,
+  preserve special keys as data and stable ties, and document callback arguments
+  and execution order. Existing callbacks receive `(value, originalKey)`,
+  comparators receive `(leftValue, rightValue)`, and reducers receive
+  `(accumulator, value, originalKey)`.
+- Existing empty terminals return `0` for COUNT, `undefined` for FIRST/FIND,
+  `false` for SOME, fresh empty containers for VALUES/ENTRIES/TO_OBJECT, and the
+  initial accumulator for REDUCE, without invoking callbacks. PICK ignores absent
+  and duplicate keys but retains stored `undefined`; SORT preserves ties.
+- Contract-foundation work adds tests and policy only, not runtime APIs. Protect
+  eager, ordered, and lazy composition, callback order and thrown-value identity,
+  buffering boundaries, opaque values, and independent repeat/reentrant consumption
+  through public methods rather than private implementation details.
+- Use deterministic bounded cases and native-operation differential oracles.
+  Test/policy-only work uses an empty Changeset and does not bump `0.0.1`.
