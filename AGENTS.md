@@ -19,7 +19,7 @@ sibling checkout paths.
   examples.
 - The website may depend on registry documentation tooling only. Do not add
   sibling workspace dependencies, an npm runtime alias, or documentation deployment.
-- Run from this repository with Node 22 and pnpm 10.17.1:
+- Run from this repository with Node 24 (`.nvmrc`) and pnpm 10.17.1:
   `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm typecheck`,
   `pnpm test`, `pnpm migrate:verify`, and the four `pnpm docs:*` quality
   commands.

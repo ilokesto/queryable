@@ -50,7 +50,7 @@ const names = users
 <details>
 <summary>개발</summary>
 
-이 저장소에서 Node 22와 pnpm 10.17.1을 사용합니다.
+이 저장소에서 Node 24(`.nvmrc` 참고)와 pnpm 10.17.1을 사용합니다.
 
 ```sh
 pnpm typecheck
