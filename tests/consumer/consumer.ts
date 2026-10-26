@@ -1,5 +1,7 @@
 import {
-  FIND, GROUP_BY, LAZY, MAP, REDUCE, SORT, VALUES, WHERE, createQueryable,
+  AT, COUNT_BY, EVERY, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
+  INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
+  TO_MAP, TO_SET, VALUES, WHERE, createQueryable,
 } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "@ilokesto/queryable";
 
@@ -19,3 +21,30 @@ export const total = mapped[REDUCE]((acc, value, key) => ({
   keys: [...acc.keys, key],
 }), initial);
 export const values: string[] = narrowed[VALUES].call(narrowed);
+export const mappedKeys: string[] = mapped[KEYS]();
+export const mappedMap: Map<string, number> = mapped[TO_MAP]();
+export const mappedSet: Set<number> = mapped[TO_SET]();
+export const objectGroupKey = {};
+export const objectGroups: Map<object, QuerySequence<number>> = mapped[GROUP_BY_MAP](() => objectGroupKey);
+
+export const literalCounts = mapped[COUNT_BY](() => "positive" as const);
+export const literalFold = mapped[REDUCE_BY](
+  value => value > 0 ? "positive" as const : "other" as const,
+  group => ({ group, sum: 0, keys: new Array<string>() }),
+  (accumulator, value, key) => ({
+    group: accumulator.group,
+    sum: accumulator.sum + value,
+    keys: [...accumulator.keys, key],
+  }),
+);
+export const stats = mapped[STATS](value => value);
+
+export const guardedEntry = ordered[FIND_ENTRY](value => typeof value === "string");
+export const guardedSingle = lazy[SINGLE](value => typeof value === "number");
+export const relative: string | number | undefined = lazy[AT](-1);
+export const last: string | number | undefined = record[LAST]();
+export const every: boolean = record[EVERY](value => typeof value === "string");
+export const empty: boolean = lazy[IS_EMPTY]();
+export const contains: boolean = ordered[INCLUDES](2);
+export const fallbackValue = record[FIRST_OR](false);
+export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
