@@ -1,5 +1,6 @@
 import {
-  FIND, GROUP_BY, LAZY, MAP, REDUCE, SORT, VALUES, WHERE, createQueryable,
+  COUNT_BY, FIND, GROUP_BY, LAZY, MAP, REDUCE, REDUCE_BY, SORT, STATS,
+  VALUES, WHERE, createQueryable,
 } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "@ilokesto/queryable";
 
@@ -19,3 +20,15 @@ export const total = mapped[REDUCE]((acc, value, key) => ({
   keys: [...acc.keys, key],
 }), initial);
 export const values: string[] = narrowed[VALUES].call(narrowed);
+
+export const literalCounts = mapped[COUNT_BY](() => "positive" as const);
+export const literalFold = mapped[REDUCE_BY](
+  value => value > 0 ? "positive" as const : "other" as const,
+  group => ({ group, sum: 0, keys: new Array<string>() }),
+  (accumulator, value, key) => ({
+    group: accumulator.group,
+    sum: accumulator.sum + value,
+    keys: [...accumulator.keys, key],
+  }),
+);
+export const stats = mapped[STATS](value => value);
