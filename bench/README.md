@@ -1,24 +1,27 @@
 # Queryable benchmark
 
-Run from the repository root after installing workspace dependencies, including
-the queryable package's benchmark-only `remeda` devDependency:
+Run from this standalone repository root with Node 24 and pnpm 10.17.1.
+Remeda remains a development dependency only:
 
 ```sh
-pnpm --filter @ilokesto/queryable build
-node --expose-gc packages/queryable/bench/benchmark.mjs
+pnpm install --frozen-lockfile
+pnpm build
+node --expose-gc bench/benchmark.mjs
 ```
 
 Optional filter/map/first-five comparison:
 
 ```sh
-node --expose-gc packages/queryable/bench/benchmark.mjs --early-limit
+node --expose-gc bench/benchmark.mjs --early-limit --mechanisms
 ```
 
 A small smoke run, still using three measured samples:
 
 ```sh
-node --expose-gc packages/queryable/bench/benchmark.mjs \
-  --rows 100 --instances 100 --iterations 2 --rounds 3 --warmups 1 --early-limit
+node --expose-gc bench/benchmark.mjs \
+  --rows 100 --instances 100 --iterations 2 --rounds 3 --warmups 1 \
+  --early-limit --mechanisms
+node bench/bundle.mjs
 ```
 
 The script writes one JSON document to stdout, with Node/V8/Remeda versions,
@@ -26,7 +29,8 @@ machine information, all effective options, raw samples, medians, checksums,
 and elapsed time. Query validation reports predicate/mapper invocation counts;
 constructor validation counts distinct WHERE/VALUES function identities across up
 to 1,000 instances. These probes run outside measurements. Errors go to stderr and
-fail the command. A measured local run is recorded in `RESULTS.md` and `results.json`.
+fail the command. `RESULTS.md` and `results.json` preserve a historical run of
+the original 12 cases, not results for the new mechanism or bundle workloads.
 
 ## Tracks
 
@@ -35,6 +39,20 @@ fail the command. A measured local run is recorded in `RESULTS.md` and `results.
 | Retained small-instance construction | Original article Proxy, old `Object.entries` prototype, new eager | Construct and retain one wrapper per pre-existing small record. |
 | Full-filter execution | Those three plus native JS and Remeda | Filter all values and collect the full matching array, starting with an already constructed query or raw record. |
 | Optional early limit | New eager, new lazy, native loop, Remeda pipe | Filter values, map IDs to doubled numbers, and collect the first five results. |
+| Optional lazy stages | Depth 0, 1, 16 | Construct a lazy view and zero/one/deep identity MAP stages, then collect all values. |
+| Optional materialized terminals | Record and sorted materialized sequence, COUNT and FIRST | Invoke only the terminal on a prebuilt source; sorting is excluded. |
+| Optional sequence PICK | Narrow (up to 4 keys) and wide (all keys), eager/lazy/native Map | Pick reversed record keys plus a duplicate and missing key; collect key/value entries. Source sorting is excluded; lookup buffering is included. |
+| Optional expensive comparator | Queryable SORT and native values toSorted | Recompute a deterministic 32-round integer projection for both comparator operands. No selector-sort or projection cache API is assumed. |
+
+`--mechanisms` adds 15 cases to the original suite; `--early-limit` adds four.
+Zero/one/deep workloads keep output and traversed row count identical to expose
+stage overhead without conflating selectivity. Lazy stage creation is included;
+terminal-only sources and sequence PICK sources are prepared before measurement.
+PICK is record-key selection, not field projection. Its lazy case starts from a
+materialized sequence, isolating lazy PICK rather than measuring source sorting.
+The native Map baseline has the same ordered, unique, existing-key semantics.
+Exact outputs are checked twice for repeatability before warmup. Sort callback
+counts are observed in a separate validation probe, never in timed callbacks.
 
 The Proxy is the article's exact `WHERE`/`VALUES` implementation with TypeScript
 annotations removed and the benchmark's imported symbols substituted. Its
@@ -59,9 +77,10 @@ initial `createQueryable` construction does not.
 
 Inputs are deterministic plain records with non-integer `rowN` keys and shallow
 `{ id, score: id % 10 }` values, with predicate `score >= 5`. They do not measure
-accessors, mutation, special keys, complex callbacks, sorting, grouping, or the
-cost of nested payload allocation. Every child checks exact result equality
-against native filtering before any warmup or measurement. The constructor
+accessors, mutation, special keys, grouping, or the cost of nested payload
+allocation. Only the optional expensive-sort cases exercise complex callbacks
+and timed sorting. Every child checks exact result equality against a native
+reference before any warmup or measurement. The constructor
 track also checks that its wrapper supports filtering and collection.
 
 ## Measurement
@@ -87,6 +106,39 @@ temporary entry-array churn, or a count of closures. GC/JIT bookkeeping and heap
 layout can yield noisy or negative deltas; do not clamp them or interpret a
 small difference as proof.
 
+**Transient allocation is not measured.** The JSON explicitly records this
+instead of relabeling retained heap deltas as allocation. Discarded entry tuples,
+generator objects and closures can affect timing without surviving explicit GC.
+Use a dedicated allocation profiler in a separate run to investigate them;
+neither these heap samples nor bundle bytes quantify temporary allocation.
+
+## Consumer bundle footprint
+
+`node bench/bundle.mjs` uses esbuild already installed through Vitest -> Vite.
+It fails if that tooling is unavailable; it never downloads a bundler. It reports
+the esbuild and Node/V8 versions, machine metadata, exact fixture sources,
+included module paths, settings, and three independent build-size samples.
+Each generated consumer is executed and checked against a native full filter.
+Sizes must be reproducible across the three builds, with no size threshold.
+
+All three consumers return values only: native `Object.values().filter()`,
+Remeda `filter(Object.values())`, and Queryable construction/WHERE/VALUES.
+These are not key-preserving record equivalents. Runtime comparisons also
+retain the original distinction: full-filter/early-limit return values, while
+the sequence PICK cases return ordered entries and preserve keys.
+
+Measurements are the **whole consumer** minified ESM bytes and level-9 gzip
+bytes, targeting browser ES2023 with tree shaking and no sourcemaps or legal
+comments. They are not npm tarball size, raw source size, incremental library
+cost, runtime memory, or loading time. The native fixture is a disclosed baseline,
+not a number subtracted to claim a universal package size. The shared Symbol
+prototype can retain methods not explicitly imported by a consumer; the emitted
+module list and whole-consumer bytes expose this without promising per-method
+tree shaking. Bundle sizes are deterministic artifacts, not statistical timing
+samples; the three builds check reproducibility rather than confidence.
+
+## Retention and limits
+
 Construction ownership differs: the article Proxy references its already-live
 input record, while both prototype constructors shallow-copy its outer record.
 All inputs and nested values exist before the baseline heap sample. This track
@@ -104,7 +156,8 @@ abort the report rather than print partial success.
 
 `--help` lists options. Integer ranges are validated: rows/instances 1-100,000,
 small-size 1-32, iterations 1-1,000, rounds 3-25, warmups 1-10. Combined work is
-capped at 100 million entries per case across passes; full-query retention is
+capped at 100 million entry/stage visits per case across passes (the mechanism
+suite conservatively applies its maximum 16-stage depth); full-query retention is
 capped at one million input entries per batch. Larger configurations can still
 take longer than defaults. Case order is fixed and disclosed by the JSON; CPU
 thermal/frequency changes, engine optimization, and imported-library overhead

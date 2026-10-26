@@ -5,6 +5,7 @@ import os from "node:os";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
+import { makeWorkload, mechanismCases } from "./workloads.mjs";
 
 const runFile = promisify(execFile);
 const scriptPath = fileURLToPath(import.meta.url);
@@ -17,6 +18,7 @@ const { values: args } = parseArgs({
     rounds: { type: "string", default: "5" },
     warmups: { type: "string", default: "2" },
     "early-limit": { type: "boolean", default: false },
+    mechanisms: { type: "boolean", default: false },
     "child-case": { type: "string" },
     help: { type: "boolean", default: false },
   },
@@ -116,7 +118,23 @@ async function measureCase(caseName, options) {
   let expectedLength;
   let validationCallbackCounts;
   let methodIdentity;
-  if (track === "construction") {
+  let semantics;
+  let workloadDetails;
+  let resultChecksum = (result) => track === "construction"
+    ? Object.keys(result).length : result.length;
+  if (mechanismCases.includes(caseName)) {
+    const workload = makeWorkload(caseName, makeRecord(options.rows));
+    semantics = workload.semantics;
+    workloadDetails = workload.details;
+    resultChecksum = workload.checksum;
+    expectedLength = resultChecksum(workload.expected);
+    units = options.iterations;
+    runBatch = (retained) => {
+      for (let index = 0; index < units; index++) {
+        retained[index] = workload.execute();
+      }
+    };
+  } else if (track === "construction") {
     // All input records and their nested values exist before either measurement.
     const inputs = Array.from(
       { length: options.instances }, () => makeRecord(options.smallSize),
@@ -208,7 +226,7 @@ async function measureCase(caseName, options) {
     runBatch(retained);
     timingSamplesMs.push(performance.now() - start);
     const last = retained.at(-1);
-    checksum += track === "construction" ? Object.keys(last).length : last.length;
+    checksum += resultChecksum(last);
     retained.fill(undefined);
   }
   // Heap sampling is a second pass: explicit GC never belongs to the timed region.
@@ -219,7 +237,7 @@ async function measureCase(caseName, options) {
     global.gc();
     heapSamplesBytes.push(process.memoryUsage().heapUsed - before);
     const last = retained.at(-1);
-    checksum += track === "construction" ? Object.keys(last).length : last.length;
+    checksum += resultChecksum(last);
     retained.fill(undefined);
   }
   assert.equal(checksum, expectedLength * options.rounds * 2);
@@ -239,15 +257,17 @@ async function measureCase(caseName, options) {
     checksum,
     validationCallbackCounts,
     methodIdentity,
+    semantics,
+    workloadDetails,
   };
 }
 
 async function main() {
   if (args.help) {
     process.stdout.write(
-      "Usage: node --expose-gc packages/queryable/bench/benchmark.mjs " +
+      "Usage: node --expose-gc bench/benchmark.mjs " +
       "[--rows 5000] [--instances 5000] [--small-size 4] [--iterations 10] " +
-      "[--rounds 5] [--warmups 2] [--early-limit]\n",
+      "[--rounds 5] [--warmups 2] [--early-limit] [--mechanisms]\n",
     );
     return;
   }
@@ -259,9 +279,10 @@ async function main() {
     rounds: integerOption("rounds", 3, 25),
     warmups: integerOption("warmups", 1, 10),
     earlyLimit: args["early-limit"],
+    mechanisms: args.mechanisms,
   };
   const passes = options.rounds * 2 + options.warmups;
-  if (options.rows * options.iterations * passes > 100000000 ||
+  if (options.rows * options.iterations * passes * (options.mechanisms ? 16 : 1) > 100000000 ||
       options.instances * options.smallSize * passes > 100000000 ||
       options.rows * options.iterations > 1000000) {
     throw new Error("Options exceed the bounded work/retention budget; reduce sizes or rounds");
@@ -284,6 +305,7 @@ async function main() {
       "early-limit/native-loop-early-stop",
       "early-limit/remeda-values-pipe",
     ] : []),
+    ...(options.mechanisms ? mechanismCases : []),
   ];
   if (args["child-case"]) {
     assert.ok(cases.includes(args["child-case"]), "Unknown child case");
@@ -304,7 +326,8 @@ async function main() {
     results.push(JSON.parse(stdout));
   }
   process.stdout.write(`${JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
+    measuredAt: new Date().toISOString(),
     runtime: { node: process.version, v8: process.versions.v8, remeda: remeda.version },
     machine: {
       platform: process.platform, release: os.release(), arch: process.arch,
@@ -318,6 +341,8 @@ async function main() {
       timing: "warmups then repeated retained batches; median; GC outside timer",
       heap: "separate repeated batches; post-GC heapUsed delta with results retained",
       heapIsTotalAllocation: false,
+      transientAllocation: { measured: false, reason: "post-GC retained heap cannot measure discarded allocation" },
+      bundle: { measured: false, command: "node bench/bundle.mjs" },
       queryConstructionIncluded: false,
       constructionBaselines: "native JS and Remeda have no DSL wrapper; not applicable",
       proxyOwnership: "references pre-existing input; prototype constructors shallow-copy",
