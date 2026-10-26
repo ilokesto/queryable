@@ -103,3 +103,38 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 - Methods are shared and frozen, not bound per instance. This is a structural allocation choice, not a promise of a particular heap reduction or runtime speed.
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
+
+## Lookup and default reads
+
+These shared terminal methods work on records, ordered sequences, and lazy views in query order.
+
+| Operation | Result |
+| --- | --- |
+| `[LAST]()` | Last value, or `undefined` when empty |
+| `[AT](index)` | Value at a zero-based index; negative indexes count from the end |
+| `[SINGLE](predicate?)` | Only matching value, or `undefined` for no match; throws `RangeError` on the second match |
+| `[EVERY](predicate)` | Whether every value matches; `true` when empty |
+| `[IS_EMPTY]()` | Whether no entry exists |
+| `[INCLUDES](value)` | Whether a value exists using SameValueZero (`NaN` matches `NaN`, `0` matches `-0`, objects use identity) |
+| `[FIND_ENTRY](predicate)` | First matching fresh `[key, value]` tuple, or `undefined` |
+| `[FIRST_OR](value)` | First value, using the supplied fallback only when empty |
+| `[FIRST_OR_ELSE](factory)` | First value, calling the zero-argument factory exactly once only when empty |
+
+Predicates receive `(value, key)`. `SINGLE` without a predicate counts every entry; with a predicate it counts only matches. A stored `undefined` is still a match and a second such entry still throws. `SINGLE` and `FIND_ENTRY` preserve type guard narrowing. Returned tuples are fresh but their values remain shared references.
+
+`AT` uses `Array.at` numeric coercion: fractions truncate toward zero, `NaN` selects index zero, and signed zero selects the first entry. Both infinities return `undefined` without iterating or executing pending lazy callbacks. Coercion errors propagate before iteration. A finite nonnegative index stops at the selected entry (or exhausts the query when out of range). A finite negative index consumes the whole query and buffers at most `min(entry count, abs(truncated index))` values. `LAST` also consumes the whole query. `SINGLE` consumes until exhaustion or its second match; the other reads stop as soon as their result is known. Repeated calls on lazy views repeat pending work.
+
+Presence never depends on truthiness or on whether a value is `undefined`. Existing `FIRST` and `FIND` still return `undefined` for either absence or a stored `undefined`; default reads instead inspect entry presence and keep stored `0`, `false`, and `undefined` unchanged. Predicate and factory errors propagate unchanged.
+
+```ts
+import {
+  createQueryable, AT, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, SINGLE,
+} from "@ilokesto/queryable";
+
+const query = createQueryable<number | string | undefined>({ a: undefined, b: 0, c: "three" });
+query[FIRST_OR](99); // undefined: entry "a" exists
+query[FIRST_OR_ELSE](() => 99); // undefined: factory is not called
+query[AT](-1); // "three"
+query[SINGLE]((value): value is string => typeof value === "string"); // string | undefined
+query[FIND_ENTRY]((value): value is string => typeof value === "string"); // [string, string] | undefined
+```

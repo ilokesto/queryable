@@ -1,3 +1,10 @@
+import {
+  AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE,
+  at, every, findEntry, firstOr, firstOrElse, includes, isEmpty, last, single,
+} from "./lookup.js";
+import type { LookupTerminals } from "./lookup.js";
+export { AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE } from "./lookup.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -68,7 +75,7 @@ interface Source<T> {
   [ITERATE](): Iterable<Entry<T>>;
 }
 
-interface Terminals<T> extends Source<T> {
+interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   /** Count records; consumes a lazy chain.
    * @example query[COUNT]()
    */
@@ -247,7 +254,42 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean)
   return undefined;
 }
 
+function lookupSingle<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
+function lookupSingle<T>(this: Source<T>, predicate?: (value: T, key: string) => boolean): T | undefined;
+function lookupSingle<T>(this: Source<T>, predicate?: (value: T, key: string) => boolean): T | undefined {
+  return single(this[ITERATE](), predicate);
+}
+
+function lookupEntry<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): [string, S] | undefined;
+function lookupEntry<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): [string, T] | undefined;
+function lookupEntry<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): [string, T] | undefined {
+  return findEntry(this[ITERATE](), predicate);
+}
+
 const terminals = {
+  [LAST]<T>(this: Source<T>): T | undefined {
+    return last(this[ITERATE]());
+  },
+  [AT]<T>(this: Source<T>, index: number): T | undefined {
+    return at(this[ITERATE](), index);
+  },
+  [SINGLE]: lookupSingle,
+  [EVERY]<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): boolean {
+    return every(this[ITERATE](), predicate);
+  },
+  [IS_EMPTY]<T>(this: Source<T>): boolean {
+    return isEmpty(this[ITERATE]());
+  },
+  [INCLUDES]<T>(this: Source<T>, value: T): boolean {
+    return includes(this[ITERATE](), value);
+  },
+  [FIND_ENTRY]: lookupEntry,
+  [FIRST_OR]<T, U>(this: Source<T>, value: U): T | U {
+    return firstOr(this[ITERATE](), value);
+  },
+  [FIRST_OR_ELSE]<T, U>(this: Source<T>, factory: () => U): T | U {
+    return firstOrElse(this[ITERATE](), factory);
+  },
   [FIND]: find,
   [SOME]<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): boolean {
     for (const [key, value] of this[ITERATE]()) {
