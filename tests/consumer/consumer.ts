@@ -1,5 +1,6 @@
 import {
   AT, COUNT_BY, EVERY, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
+  GROUP_JOIN, INNER_JOIN, LEFT_JOIN,
   INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
   ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable, iterateAsyncEntries,
 } from "@ilokesto/queryable";
@@ -66,6 +67,19 @@ export const contains: boolean = ordered[INCLUDES](2);
 export const fallbackValue = record[FIRST_OR](false);
 export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
 
+const joinInner = createQueryable({ x: 3, y: 1 });
+export const joinGroups: Queryable<number> = record[GROUP_JOIN](
+  joinInner, value => String(value).length, value => value,
+  (_value, matches) => matches.length,
+);
+export const joinPairs: QuerySequence<number> = mapped[INNER_JOIN](
+  joinInner, value => value, value => value,
+  (value, match, key) => [`${key}/${match.key}`, value + match.value],
+);
+export const leftPairs: QuerySequence<boolean> = lazy[LEFT_JOIN](
+  joinInner, value => String(value).length, value => value,
+  (_value, match, key) => [key, match.matched],
+);
 import { DIFFERENCE, INTERSECTION, UNION } from "@ilokesto/queryable";
 
 const setLeft = createQueryable({ a: { id: 1, name: "one" } });

@@ -442,6 +442,65 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
 
+## 인덱스 조인
+
+`GROUP_JOIN(inner, outerKey, innerKey, project)`은 outer 키마다 결과를 하나씩
+유지합니다. `project(value, matches, outerKey)`의 matches는 새 배열이며
+readonly `[innerKey, innerValue]` 튜플을 담습니다. 일치하지 않으면 빈 배열입니다.
+레코드 receiver는 레코드를, 시퀀스 receiver는 시퀀스를 반환합니다.
+
+`INNER_JOIN`과 `LEFT_JOIN`은 같은 앞의 세 인자 다음에
+`project(value, match, outerKey)`와 선택적 `{ duplicateKeys }`를 받습니다.
+projection은 호출자가 정한 문자열 키의 **`[generatedKey, result]`를 반드시
+반환**하며, 결과는 순서 있는 시퀀스입니다. 일치 context는
+`{ matched: true, key: string, value: I }`입니다. LEFT_JOIN은 불일치 outer에
+`{ matched: false }`를 한 번 전달하므로 저장된 `undefined`와 부재를 구분합니다.
+INNER_JOIN은 불일치 outer를 출력하지 않습니다. 빈 outer에서는 결과가 없고
+outer selector와 projection도 호출하지 않습니다. selector는 각 소스의
+`(value, originalKey)`를 받으며 후속 콜백에는 명시적으로 생성한 키를 전달합니다.
+
+```ts
+import {
+  createQueryable, GROUP_JOIN, INNER_JOIN, LEFT_JOIN, LAZY, VALUES,
+} from "@ilokesto/queryable";
+
+const users = createQueryable({ alice: 1, bob: 2 });
+const orders = createQueryable({ first: { user: 1, total: 10 }, second: { user: 1, total: 20 } });
+users[GROUP_JOIN](orders, id => id, order => order.user,
+  (_id, matches) => matches.length)[VALUES](); // [2, 0]
+users[LAZY]()[INNER_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [`${key}/${match.key}`, match.value.total])[VALUES](); // [10, 20]
+users[LEFT_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [match.matched ? `${key}/${match.key}` : key,
+    match.matched ? match.value.total : undefined])[VALUES](); // [10, 20, undefined]
+```
+
+조인 키는 native Map SameValueZero를 따릅니다. `NaN`끼리와 두 부호의 0이
+일치하며 객체와 Symbol은 문자열 변환 없이 identity로 비교합니다. SORT를 포함한
+outer 순서를 유지하고 각 outer 안에서는 inner 원본 순서로 출력합니다.
+생성 키는 `createQuerySequence`의 공통 identity 경계를 통과합니다. 기본
+`"error"`는 중복에서 예외를 던지고 `"first"`는 첫 값을 유지합니다.
+`"last"`는 생성 entry 전체를 버퍼링하여 각 키의 첫 위치에 마지막 값을 둡니다.
+특수 문자열 키도 일반 데이터이며 암묵적인 번호 생성이나 덮어쓰기는 없습니다.
+streaming 정책의 prefix 소비는 실제 읽은 생성 키까지만 검증합니다.
+
+소비마다 **inner 전체를 새 Map의 match 배열로 인덱싱**합니다. 메모리는
+O(inner 항목 수)와 고유 조인 키 bucket에 비례합니다. outer가 비어도 inner를
+끝까지 소비하고 항목마다 selector를 한 번 호출한 뒤 outer iterator를 획득합니다.
+읽은 outer 항목마다 selector를 한 번, GROUP_JOIN은 outer마다 projection을
+한 번, INNER_JOIN은 일치 pair마다, LEFT_JOIN은 pair 또는 불일치 outer마다
+한 번 호출합니다. GROUP_JOIN은 projection마다 match 튜플을 복사합니다.
+N:M에서는 출력이 outer 개수와 inner 개수의 곱까지 늘 수 있으며 즉시 평가
+결과는 출력 전체를 저장합니다. identity 검증도 생성 키를 보관하고 `"last"`는
+전체 결과를 저장합니다. 무한한 inner 원본에서는 결과를 출력할 수 없습니다.
+
+레코드와 즉시 정렬 receiver는 호출 즉시 실행하고 지연 receiver는 demand까지
+인덱싱과 콜백을 미룹니다. 지연 조인 뒤의 `LIMIT(0)`은 두 소스를 획득하지
+않습니다. 인덱싱 이후 streaming 정책은 outer 조기 종료를 지원하고 획득한
+iterator를 닫습니다. 소스와 콜백 예외는 그대로 전파하며 활성 iterator를
+닫습니다. 반복·교차 지연 소비는 독립적인 인덱스를 만들고 소스 변경을 읽습니다.
+즉시 평가 결과는 스냅샷입니다. GROUP_JOIN은 receiver 모드를 따르며 기존
+GROUP_BY의 즉시 평가 의미는 바꾸지 않습니다.
 ## Selector 기반 집합
 
 `DIFFERENCE`, `INTERSECTION`, `UNION`은 우측 쿼리와 필수 selector 두 개를

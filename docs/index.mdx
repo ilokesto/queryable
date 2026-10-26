@@ -448,6 +448,67 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Indexed joins
+
+`GROUP_JOIN(inner, outerKey, innerKey, project)` preserves each outer key and
+returns exactly one value per outer entry. `project(value, matches, outerKey)`
+receives a fresh array of readonly `[innerKey, innerValue]` tuples, empty for no
+match. It returns a record for a record receiver and a sequence for a sequence.
+
+`INNER_JOIN` and `LEFT_JOIN` use the same first three arguments, followed by
+`project(value, match, outerKey)` and optional `{ duplicateKeys }`. Their
+projection **must return `[generatedKey, result]`**, with a string key chosen by
+the caller. Both return ordered sequences. Inner matches are
+`{ matched: true, key: string, value: I }`. LEFT_JOIN also passes
+`{ matched: false }` once for an unmatched outer entry: matched `undefined` is
+not absence. INNER_JOIN emits nothing for an unmatched outer entry. Empty outer
+input produces no outputs and never invokes outer selectors or projections.
+Selectors receive `(value, originalKey)` from their own source; downstream
+callbacks receive the explicit generated keys.
+
+```ts
+import {
+  createQueryable, GROUP_JOIN, INNER_JOIN, LEFT_JOIN, LAZY, VALUES,
+} from "@ilokesto/queryable";
+
+const users = createQueryable({ alice: 1, bob: 2 });
+const orders = createQueryable({ first: { user: 1, total: 10 }, second: { user: 1, total: 20 } });
+users[GROUP_JOIN](orders, id => id, order => order.user,
+  (_id, matches) => matches.length)[VALUES](); // [2, 0]
+users[LAZY]()[INNER_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [`${key}/${match.key}`, match.value.total])[VALUES](); // [10, 20]
+users[LEFT_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [match.matched ? `${key}/${match.key}` : key,
+    match.matched ? match.value.total : undefined])[VALUES](); // [10, 20, undefined]
+```
+
+Join keys use native Map SameValueZero: `NaN` matches itself, signed zeros match,
+and objects and Symbols use identity without string coercion. Outer order
+(including SORT order) is preserved, followed by inner source order for each
+match. Generated keys cross the same identity boundary as `createQuerySequence`:
+`"error"` is the default, `"first"` keeps the first value, and `"last"` buffers
+all generated entries, retaining each key's first position and last value.
+Special string keys are ordinary data. Prefix consumers check only pulled
+generated keys with streaming policies; no implicit numbering or overwrite occurs.
+
+Each consumption builds a **fresh inner Map of match arrays**, retaining all
+inner entries: O(inner count) memory plus distinct join-key buckets. The inner
+source is fully consumed and its selector called once per entry before acquiring
+the outer iterator, even when outer input is empty. Each pulled outer entry calls
+its selector once; GROUP_JOIN projects once per outer entry, INNER_JOIN once per
+pair, and LEFT_JOIN once per pair or unmatched outer entry. GROUP_JOIN copies its
+match tuples for each projection. Expanded output can reach outer count times
+inner count for many-to-many joins; eager results retain all output entries.
+Identity checking additionally retains generated keys, or full results for `"last"`.
+Infinite inner sources cannot yield join output.
+
+Record and eager sorted receivers execute immediately; lazy receivers defer
+indexing and callbacks until demand. `LIMIT(0)` downstream of a lazy join acquires
+neither source. After indexing, streaming policies allow early outer termination
+and close acquired iterators. Callback and source errors propagate unchanged and
+close active iterators. Repeat or interleaved lazy consumers have independent
+indexes and observe live source changes; eager results are snapshots. GROUP_JOIN
+is not GROUP_BY: it follows receiver mode, while existing GROUP_BY remains eager.
 ## Selector-based sets
 
 `DIFFERENCE`, `INTERSECTION`, and `UNION` take a right-hand query and two required

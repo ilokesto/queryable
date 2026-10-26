@@ -45,6 +45,10 @@ import {
 export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js";
 
 import { checkedEntries } from "./entries.js";
+import { GROUP_JOIN, INNER_JOIN, LEFT_JOIN, groupJoinEntries, innerJoinEntries, leftJoinEntries } from "./joins.js";
+import type { JoinEntry, JoinMatch, LeftJoinMatch, JoinOperations } from "./joins.js";
+export { GROUP_JOIN, INNER_JOIN, LEFT_JOIN } from "./joins.js";
+export type { JoinEntry, JoinMatch, LeftJoinMatch } from "./joins.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 import { DIFFERENCE, INTERSECTION, UNION, membershipEntries, unionEntries } from "./sets.js";
 
@@ -175,7 +179,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
+interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, M>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
   /** First original left entry per identity absent from the buffered right side. */
   [DIFFERENCE]<U, K>(
     this: Result<T, M>, right: QuerySequence<U>,
@@ -569,6 +573,35 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [GROUP_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, matches: readonly JoinEntry<I>[], key: string) => U,
+  ): Queryable<U> {
+    return fromEntries(groupJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project));
+  },
+  [INNER_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: JoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => innerJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return new Sequence(Array.from(query[ITERATE]()), false);
+  },
+  [LEFT_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: LeftJoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => leftJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return new Sequence(Array.from(query[ITERATE]()), false);
+  },
   [DIFFERENCE]<T, U, K>(
     this: Queryable<T>, right: QuerySequence<U>,
     leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
@@ -720,6 +753,35 @@ interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
+  [GROUP_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, matches: readonly JoinEntry<I>[], key: string) => U,
+  ): QuerySequence<U> {
+    return this.next(defer(groupJoinEntries, this.source, iterateEntries(inner), outerKey, innerKey, project));
+  }
+  [INNER_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: JoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => innerJoinEntries(this.source, iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return this.next(query[ITERATE]());
+  }
+  [LEFT_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: LeftJoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => leftJoinEntries(this.source, iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return this.next(query[ITERATE]());
+  }
   [ITERATE](): Iterable<Entry<T>> {
     return this.source;
   }
