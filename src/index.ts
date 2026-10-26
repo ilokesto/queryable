@@ -1,8 +1,34 @@
+import type { Truthy } from "./predicates.js";
+export { isDefined, isNonNullish, negate } from "./predicates.js";
+export type { Truthy } from "./predicates.js";
+
+import {
+  MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K,
+  extremum, nthValue, rankKey, sortByEntries, topEntries, validatePosition,
+} from "./ordering.js";
+import type { OrderRules } from "./ordering.js";
+export { MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K } from "./ordering.js";
+export type { OrderKey, OrderRule, OrderRules } from "./ordering.js";
+
+import { EACH, PARTITION, SCAN, TAP, THROUGH, eachEntry, partitionEntries, scanEntries, tapEntries, through } from "./stateful.js";
+import type { Stateful } from "./stateful.js";
+
+export { EACH, PARTITION, SCAN, TAP, THROUGH } from "./stateful.js";
+
+import {
+  DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY,
+  distinctEntries, distinctUntilChangedEntries, identity,
+} from "./distinct.js";
+
+export { DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY } from "./distinct.js";
+
 import { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM, numericStats, reduceBy } from "./aggregation.js";
 import type { NumericStats } from "./aggregation.js";
 
 export { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM } from "./aggregation.js";
 export type { NumericStats } from "./aggregation.js";
+export { FINALIZE, ON_COMPLETE } from "./lifetime.js";
+export type { ConsumptionOutcome } from "./lifetime.js";
 
 import {
   AT, EVERY, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY, LAST, SINGLE,
@@ -19,7 +45,29 @@ import {
 export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js";
 
 import { checkedEntries } from "./entries.js";
+import { GROUP_JOIN, INNER_JOIN, LEFT_JOIN, groupJoinEntries, innerJoinEntries, leftJoinEntries } from "./joins.js";
+import type { JoinEntry, JoinMatch, LeftJoinMatch, JoinOperations } from "./joins.js";
+export { GROUP_JOIN, INNER_JOIN, LEFT_JOIN } from "./joins.js";
+export type { JoinEntry, JoinMatch, LeftJoinMatch } from "./joins.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { DIFFERENCE, INTERSECTION, UNION, membershipEntries, unionEntries } from "./sets.js";
+
+export { DIFFERENCE, INTERSECTION, UNION } from "./sets.js";
+import { CONCAT, ZIP, FLAT_MAP, concatEntries, flatMapEntries, managedEntries, zipEntries } from "./combine.js";
+
+export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
+
+import {
+  CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY,
+  copyBuffer, copyPair, copyBuffers, windowEntries, pairEntries,
+  splitEntries, partitionEntries as adjacentGroupEntries, validateWindowSize,
+} from "./windows.js";
+import type { EntryBuffer, EntryPair, WindowOperations } from "./windows.js";
+
+export { CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY } from "./windows.js";
+export type { EntryBuffer, EntryPair, WindowEntry } from "./windows.js";
+
+import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
 import { BFS, DFS, traversalDepth, traversalEntries } from "./traversal.js";
 import type { ChildrenSelector, TraversalKeySelector, TraversalNode, TraversalOptions } from "./traversal.js";
@@ -28,78 +76,58 @@ export type { ChildrenSelector, TraversalContext, TraversalKeySelector, Traversa
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export {
+  compose, count, entries, find, first, lazy, limit, map, pick, pipe,
+  reduce, some, sort, toObject, values, where,
+} from "./functional.js";
+export { createShapeQueryable } from "./shape.js";
+export type { ShapeEntry, ShapeQueryable, ShapeSnapshot } from "./shape.js";
+export { createAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues } from "./async.js";
+export type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./async.js";
 
-/** Filter records, preserving type guard narrowing.
- * @example query[WHERE](value => value.age >= 20)
- */
-export const WHERE = Symbol("where");
-/** Sort into an ordered sequence, including integer-index keys.
- * @example query[SORT]((a, b) => b.age - a.age)[VALUES]()
- */
-export const SORT = Symbol("sort");
-/** Transform values without changing their record keys.
- * @example query[MAP](value => value.name)
- */
-export const MAP = Symbol("map");
-/** Pick record keys in argument order, ignoring missing and duplicate keys.
- * @example query[PICK]("alice", "bob")
- */
-export const PICK = Symbol("pick");
-/** Limit using slice(0, n) semantics.
- * @example query[LIMIT](5)
- */
-export const LIMIT = Symbol("limit");
-/** Materialize groups with literal key inference and optional presence.
- * @example query[GROUP_BY](value => value.active ? "active" : "inactive")
- */
-export const GROUP_BY = Symbol("group_by");
-/** Count records.
- * @example query[COUNT]()
- */
-export const COUNT = Symbol("count");
-/** Read the first value, or undefined.
- * @example query[FIRST]()
- */
-export const FIRST = Symbol("first");
-/** Collect values in query order.
- * @example query[VALUES]()
- */
-export const VALUES = Symbol("values");
-/** Find the first matching value without building a filtered collection.
- * @example query[FIND](value => value.age >= 20)
- */
-export const FIND = Symbol("find");
-/** Stop at the first matching value.
- * @example query[SOME](value => value.active)
- */
-export const SOME = Symbol("some");
-/** Collect fresh key/value tuples in query order.
- * @example query[ENTRIES]()
- */
-export const ENTRIES = Symbol("entries");
-/** Copy data to an ordinary object; integer keys regain native object ordering.
- * @example query[TO_OBJECT]()
- */
-export const TO_OBJECT = Symbol("to_object");
-/** Fold values and keys with an explicit initial accumulator.
- * @example query[REDUCE]((sum, value) => sum + value.price, 0)
- */
-export const REDUCE = Symbol("reduce");
-/** Create a repeatable, non-memoized lazy view.
- * @example query[LAZY]()[WHERE](value => value.active)[LIMIT](5)[VALUES]()
- */
-export const LAZY = Symbol("lazy");
+import {
+  COUNT, ENTRIES, FIND, FIRST, GROUP_BY, GROUP_BY_MAP, GROUP_BY_PROP, KEYS,
+  LAZY, LIMIT, MAP, PICK, REDUCE, SOME, SORT, TO_MAP, TO_OBJECT, TO_SET, VALUES, WHERE,
+} from "./core-symbols.js";
+export {
+  COUNT, ENTRIES, FIND, FIRST, GROUP_BY, GROUP_BY_MAP, GROUP_BY_PROP, KEYS,
+  LAZY, LIMIT, MAP, PICK, REDUCE, SOME, SORT, TO_MAP, TO_OBJECT, TO_SET, VALUES, WHERE,
+} from "./core-symbols.js";
 
 const ITERATE = Symbol("iterate");
+const COMBINE = Symbol("combine");
 type Entry<T> = readonly [string, T];
 type Mode = "record" | "sequence";
 type Result<T, M extends Mode> = M extends "record" ? Queryable<T> : QuerySequence<T>;
+type PropertyKeys<T> = T extends unknown ? keyof T : never;
+type PropertyValue<T, P extends PropertyKey> = T extends unknown ? P extends keyof T ? T[P] : never : never;
+type StringProperty<T> = {
+  [P in PropertyKeys<T> & string]: Exclude<PropertyValue<T, P>, string | undefined> extends never
+    ? Extract<PropertyValue<T, P>, string> extends never ? never : P
+    : never;
+}[PropertyKeys<T> & string];
+type PropertyMember<T, P extends PropertyKey, K extends string> =
+  T extends unknown ? P extends keyof T ? [T[P] & K] extends [never] ? never : T : never : never;
+type PropertyGroups<T, P extends PropertyKey, M extends Mode> = {
+  [K in Extract<PropertyValue<T, P>, string>]?: Result<PropertyMember<T, P, K>, M>;
+};
 
 interface Source<T> {
   [ITERATE](): Iterable<Entry<T>>;
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U>;
 }
 
 interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
+  /** Return the first minimum/maximum; empty input returns undefined. */
+  [MIN_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  [MAX_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  /** Select a zero-based position; negative positions count from the end. */
+  [NTH_BY](this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined;
+  /** Read the zero-based stable ordinal of an existing record key. */
+  [RANK_BY](this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined;
+  [TO_MAP](this: Source<T>): Map<string, T>;
+  [TO_SET](this: Source<T>): Set<T>;
+  [KEYS](this: Source<T>): string[];
   /** Sum selected numbers in query order, starting at +0. */
   [SUM](this: Source<T>, selector: (value: T, key: string) => number): number;
   /** Average selected numbers; empty input returns undefined. */
@@ -134,6 +162,8 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   /** Find a matching value and preserve type guard narrowing.
    * @example query[FIND]((value): value is string => typeof value === "string")
    */
+  [FIND](this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
+  [FIND](this: Source<T>, predicate: (value: T, key: string) => false): undefined;
   [FIND]<S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
   [FIND](this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
   /** Return true on the first match, or false for an empty query.
@@ -154,14 +184,51 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [REDUCE]<A>(this: Source<T>, reducer: (accumulator: A, value: T, key: string) => A, initial: A): A;
 }
 
-interface Operations<T, M extends Mode> extends Terminals<T> {
+interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, M>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
   /** Lazy breadth-first traversal; local child keys and output identity are explicit. */
   [BFS](this: Result<T, M>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options?: TraversalOptions<T>): QuerySequence<TraversalNode<T>>;
   /** Lazy preorder depth-first traversal; no recursive call stack. */
   [DFS](this: Result<T, M>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options?: TraversalOptions<T>): QuerySequence<TraversalNode<T>>;
+  /** First original left entry per identity absent from the buffered right side. */
+  [DIFFERENCE]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First original left entry per identity present on the buffered right side. */
+  [INTERSECTION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First identity wins left-to-right; output key collisions use duplicateKeys. */
+  [UNION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Result<T | U, M>;
+  /** Append explicitly keyed sources; duplicateKeys defaults to error. */
+  [CONCAT]<U>(this: Result<T, M>, sources: readonly (Queryable<U> | QuerySequence<U>)[], options?: QuerySequenceOptions): QuerySequence<T | U>;
+  /** Pair positions, retaining the receiver key; pulls left to right until shortest. */
+  [ZIP]<U extends readonly unknown[]>(this: Result<T, M>, ...sources: { [K in keyof U]: Queryable<U[K]> | QuerySequence<U[K]> }): QuerySequence<[T, ...U]>;
+  /** Emit explicit identities; mapper receives (value, originalKey). */
+  [FLAT_MAP]<U>(this: Result<T, M>, mapper: (value: T, originalKey: string) => Iterable<Entry<U>>, options?: QuerySequenceOptions): QuerySequence<U>;
+  /** Cache selector keys once per entry per consumption and sort lexicographically. */
+  [SORT_BY](this: Result<T, M>, ...rules: OrderRules<T>): QuerySequence<T>;
+  /** Keep at most K winners, then return them in stable sorted order. */
+  [TOP_K](this: Result<T, M>, k: number, ...rules: OrderRules<T>): QuerySequence<T>;
+  /** Keep the first entry for each value, using SameValueZero/reference identity. */
+  [DISTINCT](this: Result<T, M>): Result<T, M>;
+  /** Keep the first entry for each selected value; selectors receive original keys. */
+  [DISTINCT_BY]<K>(this: Result<T, M>, select: (value: T, key: string) => K): Result<T, M>;
+  /** Keep the first entry of each adjacent run of equal values. */
+  [DISTINCT_UNTIL_CHANGED](this: Result<T, M>): Result<T, M>;
+  /** Keep the first entry of each adjacent run of equal selected values. */
+  [DISTINCT_UNTIL_CHANGED_BY]<K>(this: Result<T, M>, select: (value: T, key: string) => K): Result<T, M>;
+  [GROUP_BY_MAP]<K>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Map<K, Result<T, M>>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
+  [WHERE](this: Result<T, M>, predicate: BooleanConstructor): Result<Truthy<T>, M>;
+  [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => false): Result<never, M>;
   [WHERE]<S extends T>(this: Result<T, M>, predicate: (value: T, key: string) => value is S): Result<S, M>;
   [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => boolean): Result<T, M>;
   /** Stable sort into a sequence. Lazy sequences defer sorting until consumption.
@@ -205,6 +272,11 @@ interface Operations<T, M extends Mode> extends Terminals<T> {
    * @example query[GROUP_BY](value => value.active ? "yes" : "no")
    */
   [GROUP_BY]<K extends string>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Partial<Record<K, Result<T, M>>>;
+  /** Eagerly group string property values; missing/undefined discriminants are skipped.
+   * Optional members remain optional in their original value type.
+   * @example query[GROUP_BY_PROP]("kind").cat?.[VALUES]()
+   */
+  [GROUP_BY_PROP]<P extends StringProperty<T>>(this: Result<T, M>, property: P): PropertyGroups<T, P, M>;
   /** Make a lazy view. Each consumption re-runs pending callbacks; no caching.
    * @example query[LAZY]()[MAP](value => value.name)[FIRST]()
    */
@@ -238,35 +310,6 @@ function* recordEntries<T>(record: Readonly<Record<string, T>>): Generator<Entry
       // The enumerated own key exists; T itself may legitimately include undefined.
       yield [key, record[key] as T];
     }
-  }
-}
-
-// Store the shared generator and its arguments, rather than a closure per chain step.
-class Deferred<T, A extends unknown[]> implements Iterable<T> {
-  constructor(
-    private readonly generate: (...args: A) => Iterable<T>,
-    private readonly args: A,
-  ) {}
-  [Symbol.iterator](): Iterator<T> {
-    return this.generate(...this.args)[Symbol.iterator]();
-  }
-}
-
-function defer<T, A extends unknown[]>(generate: (...args: A) => Iterable<T>, ...args: A): Iterable<T> {
-  return new Deferred(generate, args);
-}
-
-function* filterEntries<T>(source: Iterable<Entry<T>>, predicate: (value: T, key: string) => boolean): Generator<Entry<T>> {
-  for (const entry of source) {
-    if (predicate(entry[1], entry[0])) {
-      yield entry;
-    }
-  }
-}
-
-function* mapEntries<T, U>(source: Iterable<Entry<T>>, fn: (value: T, key: string) => U): Generator<Entry<U>> {
-  for (const [key, value] of source) {
-    yield [key, fn(value, key)];
   }
 }
 
@@ -317,6 +360,18 @@ function fromEntries<T>(entries: Iterable<Entry<T>>): Queryable<T> {
   return result;
 }
 
+function propertyGroupKey<T>(value: T, property: string): string | undefined {
+  if ((typeof value === "object" && value !== null || typeof value === "function") && property in value) {
+    const groupKey: unknown = Reflect.get(value, property);
+    if (typeof groupKey === "string") {
+      return groupKey;
+    }
+  }
+  return undefined;
+}
+
+function find<T>(this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
+function find<T>(this: Source<T>, predicate: (value: T, key: string) => false): undefined;
 function find<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined {
@@ -341,6 +396,36 @@ function lookupEntry<T>(this: Source<T>, predicate: (value: T, key: string) => b
 }
 
 const terminals = {
+  [MIN_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, false);
+  },
+  [MAX_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, true);
+  },
+  [NTH_BY]<T>(this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined {
+    validatePosition(index, true);
+    return nthValue(this[ITERATE](), index, rules);
+  },
+  [RANK_BY]<T>(this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined {
+    return rankKey(this[ITERATE](), key, rules);
+  },
+  [EACH]<T>(this: Source<T>, effect: (value: T, key: string) => void): void {
+    eachEntry(this[ITERATE](), effect);
+  },
+  [THROUGH]: through,
+  [TO_MAP]<T>(this: Source<T>): Map<string, T> {
+    return new Map(this[ITERATE]());
+  },
+  [TO_SET]<T>(this: Source<T>): Set<T> {
+    const values = new Set<T>();
+    for (const [, value] of this[ITERATE]()) {
+      values.add(value);
+    }
+    return values;
+  },
+  [KEYS]<T>(this: Source<T>): string[] {
+    return Array.from(this[ITERATE](), ([key]) => key);
+  },
   [SUM]<T>(this: Source<T>, selector: (value: T, key: string) => number): number {
     return numericStats(this[ITERATE](), selector).sum;
   },
@@ -438,10 +523,55 @@ const terminals = {
   },
 };
 
+function where<T>(this: Queryable<T>, predicate: BooleanConstructor): Queryable<Truthy<T>>;
+function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => false): Queryable<never>;
 function where<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T> {
   return fromEntries(filterEntries(recordEntries(this), predicate));
+}
+
+function zip<T, U extends readonly unknown[]>(
+  this: Source<T>, ...sources: { [K in keyof U]: Source<U[K]> }
+): QuerySequence<[T, ...U]>;
+function zip<T>(this: Source<T>, ...sources: Source<unknown>[]): QuerySequence<unknown[]> {
+  const factories: EntrySourceFactory<unknown>[] = [
+    () => this[ITERATE](),
+    ...sources.map(source => () => source[ITERATE]()),
+  ];
+  // The helper emits one value per source, in the variadic signature's order.
+  return this[COMBINE](() => zipEntries(factories));
+}
+
+const combinationMethods = {
+  [CONCAT]<T, U>(this: Source<T>, sources: readonly Source<U>[], options?: QuerySequenceOptions): QuerySequence<T | U> {
+    const factories: EntrySourceFactory<T | U>[] = [
+      () => this[ITERATE](),
+      ...sources.map(source => () => source[ITERATE]()),
+    ];
+    return this[COMBINE](() => concatEntries(factories), options);
+  },
+  [ZIP]: zip,
+  [FLAT_MAP]<T, U>(
+    this: Source<T>,
+    mapper: (value: T, originalKey: string) => Iterable<Entry<U>>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    return this[COMBINE](() => flatMapEntries(() => this[ITERATE](), mapper), options);
+  },
+};
+
+function partition<T, S extends T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => value is S,
+): [Queryable<S>, Queryable<T>];
+function partition<T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => boolean,
+): [Queryable<T>, Queryable<T>];
+function partition<T>(
+  this: Queryable<T>, predicate: (value: T, key: string) => boolean,
+): [Queryable<T>, Queryable<T>] {
+  const [matching, nonmatching] = partitionEntries(recordEntries(this), predicate);
+  return [fromEntries(matching), fromEntries(nonmatching)];
 }
 
 function takeWhile<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
@@ -458,10 +588,120 @@ const queryablePrototype = {
   [DFS]<T>(this: Queryable<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
     return traverse(this, children, keySelector, options, false);
   },
+  [GROUP_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, matches: readonly JoinEntry<I>[], key: string) => U,
+  ): Queryable<U> {
+    return fromEntries(groupJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project));
+  },
+  [INNER_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: JoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => innerJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return new Sequence(Array.from(query[ITERATE]()), false);
+  },
+  [LEFT_JOIN]<T, I, K, U>(
+    this: Queryable<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: LeftJoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => leftJoinEntries(recordEntries(this), iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return new Sequence(Array.from(query[ITERATE]()), false);
+  },
+  [DIFFERENCE]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, false));
+  },
+  [INTERSECTION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, true));
+  },
+  [UNION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Queryable<T | U> {
+    return fromEntries(iterateEntries(createQuerySequence(
+      () => unionEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector), options,
+    )));
+  },
+  ...combinationMethods,
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
+    return new Sequence(Array.from(iterateEntries(createQuerySequence(factory, options))), false);
+  },
+  [CHUNK]<T>(this: Queryable<T>, size: number): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[CHUNK](size);
+  },
+  [WINDOW]<T>(this: Queryable<T>, size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[WINDOW](size, stride, partial);
+  },
+  [PAIRWISE]<T>(this: Queryable<T>): QuerySequence<EntryPair<T>> {
+    return new Sequence(recordEntries(this), false)[PAIRWISE]();
+  },
+  [SPLIT]<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[SPLIT](predicate);
+  },
+  [PARTITION_BY]<T, K>(this: Queryable<T>, selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return new Sequence(recordEntries(this), false)[PARTITION_BY](selector);
+  },
+  [SORT_BY]<T>(this: Queryable<T>, ...rules: OrderRules<T>): QuerySequence<T> {
+    return new Sequence(sortByEntries(recordEntries(this), rules), false);
+  },
+  [TOP_K]<T>(this: Queryable<T>, k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return new Sequence(topEntries(recordEntries(this), k, rules), false);
+  },
+  [DISTINCT]<T>(this: Queryable<T>): Queryable<T> {
+    return fromEntries(distinctEntries(recordEntries(this), identity));
+  },
+  [DISTINCT_BY]<T, K>(this: Queryable<T>, select: (value: T, key: string) => K): Queryable<T> {
+    return fromEntries(distinctEntries(recordEntries(this), select));
+  },
+  [DISTINCT_UNTIL_CHANGED]<T>(this: Queryable<T>): Queryable<T> {
+    return fromEntries(distinctUntilChangedEntries(recordEntries(this), identity));
+  },
+  [DISTINCT_UNTIL_CHANGED_BY]<T, K>(this: Queryable<T>, select: (value: T, key: string) => K): Queryable<T> {
+    return fromEntries(distinctUntilChangedEntries(recordEntries(this), select));
+  },
+  [GROUP_BY_MAP]<T, K>(this: Queryable<T>, keyFn: (value: T, key: string) => K): Map<K, Queryable<T>> {
+    const groups = new Map<K, Queryable<T>>();
+    for (const [key, value] of recordEntries(this)) {
+      const groupKey = keyFn(value, key);
+      let group = groups.get(groupKey);
+      if (group === undefined) {
+        group = createQueryable<T>({});
+        groups.set(groupKey, group);
+      }
+      group[key] = value;
+    }
+    return groups;
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
   [WHERE]: where,
+  [PARTITION]: partition,
+  [SCAN]<T, A>(
+    this: Queryable<T>, reducer: (accumulator: A, value: T, key: string) => A, seed: () => A,
+  ): Queryable<A> {
+    return fromEntries(scanEntries(recordEntries(this), reducer, seed));
+  },
+  [TAP]<T>(this: Queryable<T>, effect: (value: T, key: string) => void): Queryable<T> {
+    return fromEntries(tapEntries(recordEntries(this), effect));
+  },
   [SORT]<T>(this: Queryable<T>, compareFn: (a: T, b: T) => number): QuerySequence<T> {
     return new Sequence(sortEntries(recordEntries(this), compareFn), false);
   },
@@ -502,18 +742,67 @@ const queryablePrototype = {
     }
     return groups;
   },
+  [GROUP_BY_PROP]<T, P extends StringProperty<T>>(this: Queryable<T>, property: P): PropertyGroups<T, P, "record"> {
+    const groups: Partial<Record<string, Queryable<T>>> = Object.create(null);
+    for (const [key, value] of recordEntries(this)) {
+      const groupKey = propertyGroupKey(value, property);
+      if (groupKey !== undefined) {
+        const group = groups[groupKey] ?? (groups[groupKey] = createQueryable<T>({}));
+        group[key] = value;
+      }
+    }
+    // Each string key was read from this member's discriminant, once.
+    return groups as PropertyGroups<T, P, "record">;
+  },
   [LAZY]<T>(this: Queryable<T>): QuerySequence<T> {
     return new Sequence(defer(recordEntries, this), true);
   },
 };
 
 // Both implementations use exactly the same terminal functions, not bound copies.
-interface Sequence<T> extends Terminals<T> {}
+interface Sequence<T> extends Terminals<T>, Pick<Stateful<T, "sequence">, typeof EACH | typeof THROUGH> {
+  [CONCAT]: Operations<T, "sequence">[typeof CONCAT];
+  [ZIP]: Operations<T, "sequence">[typeof ZIP];
+  [FLAT_MAP]: Operations<T, "sequence">[typeof FLAT_MAP];
+}
 class Sequence<T> implements QuerySequence<T> {
   constructor(private readonly source: Iterable<Entry<T>>, private readonly lazy: boolean) {}
 
+  [GROUP_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, matches: readonly JoinEntry<I>[], key: string) => U,
+  ): QuerySequence<U> {
+    return this.next(defer(groupJoinEntries, this.source, iterateEntries(inner), outerKey, innerKey, project));
+  }
+  [INNER_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: JoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => innerJoinEntries(this.source, iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return this.next(query[ITERATE]());
+  }
+  [LEFT_JOIN]<I, K, U>(
+    this: Sequence<T>, inner: Queryable<I> | QuerySequence<I>,
+    outerKey: (value: T, key: string) => K, innerKey: (value: I, key: string) => K,
+    project: (value: T, match: LeftJoinMatch<I>, key: string) => JoinEntry<U>,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<U> {
+    const query = createQuerySequence(
+      () => leftJoinEntries(this.source, iterateEntries(inner), outerKey, innerKey, project), options,
+    );
+    return this.next(query[ITERATE]());
+  }
   [ITERATE](): Iterable<Entry<T>> {
     return this.source;
+  }
+
+  [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
+    return this.next(iterateEntries(createQuerySequence(factory, options)));
   }
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
@@ -526,13 +815,111 @@ class Sequence<T> implements QuerySequence<T> {
   [DFS](this: QuerySequence<T>, children: ChildrenSelector<T>, keySelector: TraversalKeySelector<T>, options: TraversalOptions<T> = {}): QuerySequence<TraversalNode<T>> {
     return traverse(this, children, keySelector, options, false);
   }
+  [DIFFERENCE]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, false));
+  }
+  [INTERSECTION]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, true));
+  }
+  [UNION]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<T | U> {
+    return this[COMBINE]<T | U>(
+      () => unionEntries(this.source, iterateEntries(right), leftSelector, rightSelector), options,
+    );
+  }
+
+  private buffers<U>(source: Iterable<Entry<U>>, copy: (value: U) => U): Sequence<U> {
+    return new Sequence(this.lazy ? source : defer(copyBuffers, Array.from(source), copy), this.lazy);
+  }
+
+  [CHUNK](size: number): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    return this.buffers(defer(windowEntries, this.source, size, size, true), copyBuffer<T>);
+  }
+  [WINDOW](size: number, stride = 1, partial = false): QuerySequence<EntryBuffer<T>> {
+    validateWindowSize(size, "size");
+    validateWindowSize(stride, "stride");
+    return this.buffers(defer(windowEntries, this.source, size, stride, partial), copyBuffer<T>);
+  }
+  [PAIRWISE](): QuerySequence<EntryPair<T>> {
+    return this.buffers(defer(pairEntries, this.source), copyPair<T>);
+  }
+  [SPLIT](predicate: (value: T, key: string) => boolean): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(splitEntries, this.source, predicate), copyBuffer<T>);
+  }
+  [PARTITION_BY]<K>(selector: (value: T, key: string) => K): QuerySequence<EntryBuffer<T>> {
+    return this.buffers(defer(adjacentGroupEntries, this.source, selector), copyBuffer<T>);
+  }
+
+  [SORT_BY](...rules: OrderRules<T>): QuerySequence<T> {
+    return this.next(defer(sortByEntries, this.source, rules));
+  }
+  [TOP_K](k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return this.next(defer(topEntries, this.source, k, rules));
+  }
+
+  [DISTINCT](): QuerySequence<T> {
+    return this.next(defer(distinctEntries, this.source, identity<T>));
+  }
+  [DISTINCT_BY]<K>(select: (value: T, key: string) => K): QuerySequence<T> {
+    return this.next(defer(distinctEntries, this.source, select));
+  }
+  [DISTINCT_UNTIL_CHANGED](): QuerySequence<T> {
+    return this.next(defer(distinctUntilChangedEntries, this.source, identity<T>));
+  }
+  [DISTINCT_UNTIL_CHANGED_BY]<K>(select: (value: T, key: string) => K): QuerySequence<T> {
+    return this.next(defer(distinctUntilChangedEntries, this.source, select));
+  }
+
+  [GROUP_BY_MAP]<K>(keyFn: (value: T, key: string) => K): Map<K, QuerySequence<T>> {
+    const entries = new Map<K, Entry<T>[]>();
+    for (const entry of this.source) {
+      const groupKey = keyFn(entry[1], entry[0]);
+      const group = entries.get(groupKey);
+      if (group === undefined) {
+        entries.set(groupKey, [entry]);
+      } else {
+        group.push(entry);
+      }
+    }
+    const groups = new Map<K, QuerySequence<T>>();
+    for (const [key, group] of entries) {
+      groups.set(key, new Sequence(group, false));
+    }
+    return groups;
+  }
+
+  [WHERE](predicate: BooleanConstructor): QuerySequence<Truthy<T>>;
+  [WHERE](predicate: (value: T, key: string) => false): QuerySequence<never>;
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
   [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T>;
-  [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T> {
-    return this.next(defer(filterEntries, this.source, predicate));
+  [WHERE](predicate: (value: T, key: string) => boolean): Source<T> {
+    return this.next(this.lazy ? fuseWhere(this.source, predicate) : defer(filterEntries, this.source, predicate));
   }
   [MAP]<U>(fn: (value: T, key: string) => U): QuerySequence<U> {
-    return this.next(defer(mapEntries, this.source, fn));
+    return this.next(this.lazy ? fuseMap(this.source, fn) : defer(mapEntries, this.source, fn));
+  }
+  [PARTITION]<S extends T>(predicate: (value: T, key: string) => value is S): [QuerySequence<S>, QuerySequence<T>];
+  [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>];
+  [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>] {
+    const [matching, nonmatching] = partitionEntries(this.source, predicate);
+    return [new Sequence(matching, false), new Sequence(nonmatching, false)];
+  }
+  [SCAN]<A>(reducer: (accumulator: A, value: T, key: string) => A, seed: () => A): QuerySequence<A> {
+    return this.next(defer(scanEntries, this.source, reducer, seed));
+  }
+  [TAP](effect: (value: T, key: string) => void): QuerySequence<T> {
+    return this.next(defer(tapEntries, this.source, effect));
   }
   [SORT](compareFn: (a: T, b: T) => number): QuerySequence<T> {
     return new Sequence(
@@ -578,12 +965,29 @@ class Sequence<T> implements QuerySequence<T> {
     }
     return groups;
   }
+  [GROUP_BY_PROP]<P extends StringProperty<T>>(property: P): PropertyGroups<T, P, "sequence"> {
+    const entries: Partial<Record<string, Entry<T>[]>> = Object.create(null);
+    for (const entry of this.source) {
+      const groupKey = propertyGroupKey(entry[1], property);
+      if (groupKey !== undefined) {
+        (entries[groupKey] ??= []).push(entry);
+      }
+    }
+    const groups: Partial<Record<string, QuerySequence<T>>> = Object.create(null);
+    for (const key in entries) {
+      const group = entries[key];
+      if (group) {
+        groups[key] = new Sequence(group, false);
+      }
+    }
+    return groups as PropertyGroups<T, P, "sequence">;
+  }
   [LAZY](): QuerySequence<T> {
     return new Sequence(this.source, true);
   }
 }
 
-Object.assign(Sequence.prototype, terminals);
+Object.assign(Sequence.prototype, terminals, combinationMethods);
 Object.freeze(Sequence.prototype);
 // A null root makes "__proto__", "constructor", and "toString" ordinary data keys.
 Object.setPrototypeOf(queryablePrototype, null);
@@ -627,7 +1031,7 @@ export function createQuerySequence<T>(
     case "error":
     case "first":
     case "last":
-      return new Sequence(defer(checkedEntries, factory, policy), true);
+      return new Sequence(defer(checkedEntries, () => managedEntries(factory), policy), true);
     default: {
       const unsupported: never = policy;
       throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
