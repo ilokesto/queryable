@@ -1,3 +1,9 @@
+import { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM, numericStats, reduceBy } from "./aggregation.js";
+import type { NumericStats } from "./aggregation.js";
+
+export { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM } from "./aggregation.js";
+export type { NumericStats } from "./aggregation.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -69,6 +75,25 @@ interface Source<T> {
 }
 
 interface Terminals<T> extends Source<T> {
+  /** Sum selected numbers in query order, starting at +0. */
+  [SUM](this: Source<T>, selector: (value: T, key: string) => number): number;
+  /** Average selected numbers; empty input returns undefined. */
+  [AVERAGE](this: Source<T>, selector: (value: T, key: string) => number): number | undefined;
+  /** Minimum selected number; empty input returns undefined. */
+  [MIN](this: Source<T>, selector: (value: T, key: string) => number): number | undefined;
+  /** Maximum selected number; empty input returns undefined. */
+  [MAX](this: Source<T>, selector: (value: T, key: string) => number): number | undefined;
+  /** Compute all five statistics with one selector call per entry. */
+  [STATS](this: Source<T>, selector: (value: T, key: string) => number): NumericStats;
+  /** Count per group; possible string keys may be absent. */
+  [COUNT_BY]<K extends string>(this: Source<T>, keyFn: (value: T, key: string) => K): Partial<Record<K, number>>;
+  /** Fold per group; initial runs once for each encountered group, before its first reducer call. */
+  [REDUCE_BY]<K extends string, A>(
+    this: Source<T>,
+    keyFn: (value: T, key: string) => K,
+    initial: (groupKey: K) => A,
+    reducer: (accumulator: A, value: T, key: string) => A,
+  ): Partial<Record<K, A>>;
   /** Count records; consumes a lazy chain.
    * @example query[COUNT]()
    */
@@ -248,6 +273,32 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean)
 }
 
 const terminals = {
+  [SUM]<T>(this: Source<T>, selector: (value: T, key: string) => number): number {
+    return numericStats(this[ITERATE](), selector).sum;
+  },
+  [AVERAGE]<T>(this: Source<T>, selector: (value: T, key: string) => number): number | undefined {
+    return numericStats(this[ITERATE](), selector).average;
+  },
+  [MIN]<T>(this: Source<T>, selector: (value: T, key: string) => number): number | undefined {
+    return numericStats(this[ITERATE](), selector).min;
+  },
+  [MAX]<T>(this: Source<T>, selector: (value: T, key: string) => number): number | undefined {
+    return numericStats(this[ITERATE](), selector).max;
+  },
+  [STATS]<T>(this: Source<T>, selector: (value: T, key: string) => number): NumericStats {
+    return numericStats(this[ITERATE](), selector);
+  },
+  [COUNT_BY]<T, K extends string>(this: Source<T>, keyFn: (value: T, key: string) => K): Partial<Record<K, number>> {
+    return reduceBy(this[ITERATE](), keyFn, count => count + 1, () => 0);
+  },
+  [REDUCE_BY]<T, K extends string, A>(
+    this: Source<T>,
+    keyFn: (value: T, key: string) => K,
+    initial: (groupKey: K) => A,
+    reducer: (accumulator: A, value: T, key: string) => A,
+  ): Partial<Record<K, A>> {
+    return reduceBy(this[ITERATE](), keyFn, reducer, initial);
+  },
   [FIND]: find,
   [SOME]<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): boolean {
     for (const [key, value] of this[ITERATE]()) {

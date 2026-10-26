@@ -103,3 +103,58 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 - Methods are shared and frozen, not bound per instance. This is a structural allocation choice, not a promise of a particular heap reduction or runtime speed.
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
+
+## Numeric and grouped aggregation
+
+These terminal methods work on records, eager ordered sequences, and lazy sequences. Each call consumes pending work immediately in source order, using original record keys in callbacks. There is no hidden source cache: repeated lazy calls rerun callbacks and observe changes to the query record.
+
+| Terminal | Result |
+| --- | --- |
+| `[SUM]((value, key) => number)` | Sum, starting at `+0`; empty input returns `0` |
+| `[AVERAGE]((value, key) => number)` | Sum divided by count; empty input returns `undefined` |
+| `[MIN]((value, key) => number)` | Minimum; empty input returns `undefined` |
+| `[MAX]((value, key) => number)` | Maximum; empty input returns `undefined` |
+| `[STATS]((value, key) => number)` | `NumericStats`: `{ count, sum, average, min, max }` |
+| `[COUNT_BY]((value, key) => K)` | `Partial<Record<K, number>>` with counts per string group |
+| `[REDUCE_BY](keyFn, initial, reducer)` | `Partial<Record<K, A>>` with one accumulator per string group |
+
+```ts
+import {
+  createQueryable, SUM, AVERAGE, MIN, MAX, STATS, COUNT_BY, REDUCE_BY,
+} from "@ilokesto/queryable";
+
+const sales = createQueryable({
+  alice: { team: "red", amount: 10 },
+  bob: { team: "blue", amount: 20 },
+  carol: { team: "red", amount: 30 },
+});
+sales[SUM](sale => sale.amount); // 60
+sales[AVERAGE](sale => sale.amount); // 20
+sales[MIN](sale => sale.amount); // 10
+sales[MAX](sale => sale.amount); // 30
+sales[STATS](sale => sale.amount);
+// { count: 3, sum: 60, average: 20, min: 10, max: 30 }
+sales[COUNT_BY](sale => sale.team); // { red: 2, blue: 1 }
+
+const totals = sales[REDUCE_BY](
+  sale => sale.team === "red" ? "red" : "blue",
+  _groupKey => ({ total: 0, members: [] as string[] }),
+  (acc, sale, key) => {
+    acc.total += sale.amount;
+    acc.members.push(key);
+    return acc;
+  },
+);
+// Partial<Record<"red" | "blue", { total: number; members: string[] }>>
+totals.red?.total; // 40
+```
+
+Numeric selectors are required and return `number` only. Use custom `REDUCE` for `bigint` totals, for example `query[REDUCE]((total, value) => total + value, 0n)` on a bigint query. `STATS` makes one pass and calls the selector exactly once per entry, computing all five fields without separately consuming the source. Each individual numeric terminal also calls its selector once per entry. Empty `STATS` returns `{ count: 0, sum: 0, average: undefined, min: undefined, max: undefined }`.
+
+Numbers use JavaScript arithmetic without filtering or coercion: sum is left-to-right `+` from `+0`, average is that sum divided by count, and extrema follow `Math.min`/`Math.max`. `NaN` propagates into numeric results but still counts as an entry. Infinities and overflow are retained; adding opposite infinities produces `NaN`. Floating-point rounding follows source order. A sum of only `-0` is `+0` (and its average is `+0`); extrema retain a lone `-0`, while mixed zero signs produce `-0` for min and `+0` for max. Even after encountering `NaN`, all remaining entries and selectors are visited unless a callback throws.
+
+`REDUCE_BY` accepts `keyFn(value, key)`, an **initial accumulator factory** `initial(groupKey)`, and `reducer(accumulator, value, key)`, in that argument order so the factory infers the reducer's accumulator type. For each entry it calls the key function, creates the accumulator if this is the first entry in that group, then invokes the reducer, including on the first entry. The factory runs exactly once per encountered group per terminal call, never for absent groups or empty input. Return a fresh object from the factory when groups need separate mutable state. The reducer's returned value replaces that group's accumulator, including `undefined`, `null`, `false`, `0`, and `""`; a stored `undefined` never reinitializes a group.
+
+Both grouped terminals fold directly without retaining full groups. Their result has a null prototype, so `""`, `__proto__`, `constructor`, and `toString` are safe string group keys. Literal key unions remain inferred, but each property is optional because the group may be absent; use `Object.hasOwn(result, key)` to distinguish an absent group from a present `undefined` accumulator. Output property enumeration follows native object ordering, including integer-like keys. Within each group reducers see the stable source order. Errors from upstream work, selectors, factories, and reducers propagate immediately; later lazy consumption starts a fresh traversal and creates fresh accumulators.
+
+`GROUP_BY` remains different: it eagerly materializes full snapshot groups that can be queried further. Use it when group contents are needed; use `COUNT_BY` or `REDUCE_BY` when only a per-group count or fold is needed.
