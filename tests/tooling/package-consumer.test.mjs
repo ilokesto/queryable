@@ -49,7 +49,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     assert.ok((await readFile(path.join(installed, file))).length > 0, file);
   }
 
-  const program = ts.createProgram(['consumer.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
+  const program = ts.createProgram(['consumer.ts', 'functional.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -58,7 +58,19 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   assert.equal(emitted.diagnostics.length, 0, format(emitted.diagnostics));
   assert.ok((await readFile(path.join(consumer, 'dist/consumer.d.ts'))).length > 0);
   await exec(process.execPath, ['runtime.mjs'], { cwd: consumer });
+  await exec(process.execPath, ['dist/functional.js'], { cwd: consumer });
 
+  await writeFile(path.join(consumer, 'functional-downstream.ts'), [
+    'import { narrowed, mapped, ordered, deferred, transform, nativeResult, found } from "./dist/functional.js";',
+    'import type { Queryable, QuerySequence } from "@ilokesto/queryable";',
+    'export const record: Queryable<string> = narrowed;',
+    'export const numbers: Queryable<number> = mapped;',
+    'export const sequence: QuerySequence<number> = ordered;',
+    'export const live: QuerySequence<string | number> = deferred;',
+    'export const reuse: (query: Queryable<string | number>) => number[] = transform;',
+    'export const native: boolean = nativeResult;',
+    'export const lookup: number | undefined = found;',
+  ].join('\n'));
   const { invalidShapePrograms, shapeDownstreamSource } = await import(pathToFileURL(path.join(consumer, 'dist/shape.js')).href);
   const shapeDownstream = path.join(consumer, 'shape-downstream.ts');
   await writeFile(shapeDownstream, shapeDownstreamSource);
@@ -78,7 +90,9 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     assert.deepEqual(failures.map(failure => failure.code), codes, `${name}\n${format(failures)}`);
   }
 
-  const downstream = ts.createProgram([path.join(consumer, 'downstream.ts')], { ...options, noEmit: true });
+  const downstream = ts.createProgram([
+    path.join(consumer, 'downstream.ts'), path.join(consumer, 'functional-downstream.ts'),
+  ], { ...options, noEmit: true });
   const downstreamDiagnostics = ts.getPreEmitDiagnostics(downstream);
   assert.equal(downstreamDiagnostics.length, 0, format(downstreamDiagnostics));
 
