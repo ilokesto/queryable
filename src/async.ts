@@ -120,7 +120,7 @@ async function* checkedEntries<T>(
     for await (const [key, value] of normalizedEntries(factory, signal)) {
       entries.set(key, value);
     }
-    yield* entries;
+    yield* snapshotEntries(entries, signal);
     return;
   }
   const seen = new Set<string>();
@@ -172,35 +172,40 @@ async function* sortEntries<T>(
   signal?: AbortSignal,
 ): AsyncGenerator<Entry<T>> {
   const entries = await collectEntries(source);
-  yield* entries.sort((left, right) => {
+  entries.sort((left, right) => {
     signal?.throwIfAborted();
     return compareFn(left[1], right[1], signal);
   });
+  yield* snapshotEntries(entries, signal);
 }
 
-async function* limitEntries<T>(source: AsyncIterable<Entry<T>>, n: number): AsyncGenerator<Entry<T>> {
+async function* limitEntries<T>(source: AsyncIterable<Entry<T>>, n: number, signal?: AbortSignal): AsyncGenerator<Entry<T>> {
   const count = Number.isNaN(n) ? 0 : Math.trunc(n);
   if (count === 0 || count === -Infinity) {
     return;
   }
   if (count < 0) {
-    yield* (await collectEntries(source)).slice(0, count);
+    yield* snapshotEntries((await collectEntries(source)).slice(0, count), signal);
     return;
   }
   let remaining = count;
+  signal?.throwIfAborted();
   for await (const entry of source) {
     yield entry;
+    signal?.throwIfAborted();
     if (--remaining === 0) {
       return;
     }
   }
 }
 
-async function* snapshotEntries<T>(entries: ReadonlyArray<Entry<T>>, signal?: AbortSignal): AsyncGenerator<Entry<T>> {
+async function* snapshotEntries<T>(entries: Iterable<Entry<T>>, signal?: AbortSignal): AsyncGenerator<Entry<T>> {
+  signal?.throwIfAborted();
   for (const entry of entries) {
     signal?.throwIfAborted();
     yield entry;
   }
+  signal?.throwIfAborted();
 }
 
 type SequenceConstructor = new <T>(source: AsyncIterable<Entry<T>>, signal?: AbortSignal) => AsyncQuerySequence<T>;
@@ -269,7 +274,7 @@ function createSequenceConstructor(): SequenceConstructor {
       return false;
     }
     [LIMIT](n: number): AsyncQuerySequence<T> {
-      return sequence(defer(limitEntries, this.source, n), this.signal);
+      return sequence(defer(limitEntries, this.source, n, this.signal), this.signal);
     }
     [LAZY](): AsyncQuerySequence<T> {
       return sequence(this.source, this.signal);

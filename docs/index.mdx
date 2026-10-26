@@ -454,6 +454,8 @@ acquisition. Abort also interrupts pending factory, `next`, value, and callback
 waits. Each wait removes its abort listener when settled; late external
 rejections remain handled. A consumed sequence with the same aborted signal
 rejects again; create a new controller/query to start a new lifetime.
+Buffered SORT, negative LIMIT, `"last"` collision results, and snapshot groups
+check cancellation before each output, including after a comparator aborts.
 
 Cancellation stops consumption, not arbitrary external work. Pass the received
 signal to that work for cooperative cancellation. On abort, an acquired iterator's
