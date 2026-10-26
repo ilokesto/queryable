@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { LAZY, MAP, SORT, VALUES, createQueryable } from '@ilokesto/queryable';
-import { found, groups, mapped, narrowed, recoveredQuery, retriedQuery, total, values } from './dist/consumer.js';
+import { found, groups, joinGroups, joinPairs, leftPairs, mapped, narrowed, recoveredQuery, retriedQuery, total, values } from './dist/consumer.js';
 
 assert.deepEqual(values, ['one']);
 assert.deepEqual(narrowed[VALUES](), ['one']);
@@ -14,3 +14,12 @@ assert.equal(query[MAP], createQueryable({ a: 1 })[MAP]);
 assert.equal(query[LAZY]()[MAP], mapped[MAP]);
 assert.deepEqual(await recoveredQuery[VALUES](), ['recovered']);
 assert.deepEqual(await retriedQuery[VALUES](), [7]);
+assert.deepEqual(joinGroups[VALUES](), [1, 1]);
+assert.deepEqual(joinPairs[VALUES](), [6, 2]);
+assert.deepEqual(leftPairs[VALUES](), [true, true]);
+
+const { setDifference, setIntersection, setUnion, setOrderedUnion } = await import('./dist/consumer.js');
+assert.deepEqual(setDifference[VALUES](), [{ id: 1, name: 'one' }]);
+assert.deepEqual(setIntersection[VALUES](), []);
+assert.deepEqual(setUnion[VALUES](), [{ id: 1, name: 'one' }, { code: 2 }]);
+assert.deepEqual(setOrderedUnion[VALUES](), setUnion[VALUES]());

@@ -448,6 +448,224 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
 
+## Hierarchy traversal
+
+`query[BFS](children, resultKey, options?)` and
+`query[DFS](children, resultKey, options?)` always return a lazy, ordered
+`QuerySequence<TraversalNode<T>>`, including when called on an eager record.
+Both selectors receive `(value, context)`. The children selector returns an
+`Iterable<readonly [string, T]>` in sibling order; it must return a fresh iterator
+or repeatable iterable on each call. Local keys need not be globally unique.
+The required result-key selector assigns each generated row its output identity;
+the common `duplicateKeys: "error" | "first" | "last"` boundary applies unchanged.
+It does not prune subtrees: even rows dropped by `"first"` still expand.
+
+```ts
+import { createQueryable, BFS, DFS, MAP, VALUES } from "@ilokesto/queryable";
+import type { TraversalContext } from "@ilokesto/queryable";
+
+interface Node {
+  name: string;
+  children: ReadonlyArray<readonly [string, Node]>;
+}
+const query = createQueryable<Node>({
+  root: {
+    name: "root",
+    children: [
+      ["left", { name: "left", children: [["leaf", { name: "leaf", children: [] }]] }],
+      ["right", { name: "right", children: [] }],
+    ],
+  },
+});
+const children = (node: Node) => node.children;
+const key = (_node: Node, context: TraversalContext<Node>) => JSON.stringify(context.path);
+query[BFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "right", "leaf"]
+query[DFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "leaf", "right"]
+```
+
+Each row has `value` plus the same context supplied to selectors:
+`key` is the original local input key, `root` is the original root value,
+`rootKey` is its input key, `path` contains local keys including the root key,
+and `depth` is zero for roots. Output keys never replace this context. Payloads
+and roots remain shallow references and are never inspected for identity.
+`path` returns a fresh readonly-typed array on each read; paths are stored
+internally as links so a deep chain does not allocate every full path unless
+requested. Materializing all paths can still require quadratic space.
+
+BFS emits all roots first, then each level in root and child iterable order.
+It uses an iterative queue and retains the frontier's child iterators. DFS uses
+an iterative iterator stack, emits preorder, and finishes a root's subtree before
+the next root; its active stack grows with depth. Neither uses recursive calls
+or reverses sibling order. BFS needs a finite current level to reach the next;
+an infinite DFS branch can prevent reaching later siblings or roots.
+
+`maxDepth` is inclusive and defaults to `Infinity`. Otherwise it must be a
+nonnegative safe integer; invalid bounds throw `RangeError` at operation
+construction, before acquisition. Zero emits only roots. Nodes at the bound do
+not call the children selector.
+
+Without `visitIdentity`, each occurrence is visited independently: repeated
+references produce separate paths and cycles need a finite bound or prefix
+consumer to terminate. With `visitIdentity(value, context)`, a fresh global
+SameValueZero Set is used per consumption, across roots. The first identity in
+traversal order wins; later occurrences emit nothing and do not expand. Use
+`visitIdentity: value => value` for reference identity, or select a domain ID.
+This visitation policy is separate from output-key collisions.
+
+Construction and `LIMIT(0)` do not acquire roots or run selectors. A node is
+yielded before its children are selected, so a prefix consumer never expands
+its final requested node. Early exit and selector, child iterator, or downstream
+errors close all still-acquired traversal iterators; all returns are attempted
+even if one throws. The original traversal error takes precedence over cleanup
+errors; an otherwise successful early close reports the first cleanup error.
+Natural exhaustion does not call `return()` on an exhausted iterator.
+Each consumption creates fresh queues, stacks, visit state, and output-key
+state and rereads the live source. `"last"` must buffer the entire traversal
+before its first result, so it cannot short-circuit an unbounded traversal.
+## Indexed joins
+
+`GROUP_JOIN(inner, outerKey, innerKey, project)` preserves each outer key and
+returns exactly one value per outer entry. `project(value, matches, outerKey)`
+receives a fresh array of readonly `[innerKey, innerValue]` tuples, empty for no
+match. It returns a record for a record receiver and a sequence for a sequence.
+
+`INNER_JOIN` and `LEFT_JOIN` use the same first three arguments, followed by
+`project(value, match, outerKey)` and optional `{ duplicateKeys }`. Their
+projection **must return `[generatedKey, result]`**, with a string key chosen by
+the caller. Both return ordered sequences. Inner matches are
+`{ matched: true, key: string, value: I }`. LEFT_JOIN also passes
+`{ matched: false }` once for an unmatched outer entry: matched `undefined` is
+not absence. INNER_JOIN emits nothing for an unmatched outer entry. Empty outer
+input produces no outputs and never invokes outer selectors or projections.
+Selectors receive `(value, originalKey)` from their own source; downstream
+callbacks receive the explicit generated keys.
+
+```ts
+import {
+  createQueryable, GROUP_JOIN, INNER_JOIN, LEFT_JOIN, LAZY, VALUES,
+} from "@ilokesto/queryable";
+
+const users = createQueryable({ alice: 1, bob: 2 });
+const orders = createQueryable({ first: { user: 1, total: 10 }, second: { user: 1, total: 20 } });
+users[GROUP_JOIN](orders, id => id, order => order.user,
+  (_id, matches) => matches.length)[VALUES](); // [2, 0]
+users[LAZY]()[INNER_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [`${key}/${match.key}`, match.value.total])[VALUES](); // [10, 20]
+users[LEFT_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [match.matched ? `${key}/${match.key}` : key,
+    match.matched ? match.value.total : undefined])[VALUES](); // [10, 20, undefined]
+```
+
+Join keys use native Map SameValueZero: `NaN` matches itself, signed zeros match,
+and objects and Symbols use identity without string coercion. Outer order
+(including SORT order) is preserved, followed by inner source order for each
+match. Generated keys cross the same identity boundary as `createQuerySequence`:
+`"error"` is the default, `"first"` keeps the first value, and `"last"` buffers
+all generated entries, retaining each key's first position and last value.
+Special string keys are ordinary data. Prefix consumers check only pulled
+generated keys with streaming policies; no implicit numbering or overwrite occurs.
+
+Each consumption builds a **fresh inner Map of match arrays**, retaining all
+inner entries: O(inner count) memory plus distinct join-key buckets. The inner
+source is fully consumed and its selector called once per entry before acquiring
+the outer iterator, even when outer input is empty. Each pulled outer entry calls
+its selector once; GROUP_JOIN projects once per outer entry, INNER_JOIN once per
+pair, and LEFT_JOIN once per pair or unmatched outer entry. GROUP_JOIN copies its
+match tuples for each projection. Expanded output can reach outer count times
+inner count for many-to-many joins; eager results retain all output entries.
+Identity checking additionally retains generated keys, or full results for `"last"`.
+Infinite inner sources cannot yield join output.
+
+Record and eager sorted receivers execute immediately; lazy receivers defer
+indexing and callbacks until demand. `LIMIT(0)` downstream of a lazy join acquires
+neither source. After indexing, streaming policies allow early outer termination
+and close acquired iterators. Callback and source errors propagate unchanged and
+close active iterators. Repeat or interleaved lazy consumers have independent
+indexes and observe live source changes; eager results are snapshots. GROUP_JOIN
+is not GROUP_BY: it follows receiver mode, while existing GROUP_BY remains eager.
+## Selector-based sets
+
+`DIFFERENCE`, `INTERSECTION`, and `UNION` take a right-hand query and two required
+selectors: `leftSelector(leftValue, originalKey)` and
+`rightSelector(rightValue, originalKey)`. The two payload types may differ; both
+selectors produce the same identity type. Equality is JavaScript Set equality
+(SameValueZero): `NaN` equals `NaN`, signed zeros match, `undefined` is a normal
+identity, and objects compare by reference, not by their fields. Record keys are
+not membership identities unless a selector explicitly returns them.
+
+| Operation | Result |
+| --- | --- |
+| `[DIFFERENCE](right, leftSelector, rightSelector)` | First original left entry per identity absent from the right |
+| `[INTERSECTION](right, leftSelector, rightSelector)` | First original left entry per identity present on the right |
+| `[UNION](right, leftSelector, rightSelector, options?)` | First original entry per identity, visiting left before right; values have type `T \| U` |
+
+These are mathematical sets, not multisets or duplicate-preserving membership
+filters. Repeated identities on either side do not multiply results. The first
+qualifying entry keeps its original key and value reference. Operations preserve
+the receiver's mode: records return records with native object key ordering;
+ordered and lazy sequences retain sequence order. The right-hand query does not
+change the receiver's evaluation mode.
+
+```ts
+import {
+  createQueryable, DIFFERENCE, INTERSECTION, UNION, ENTRIES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({
+  a: { id: 1, label: "first" },
+  b: { id: 1, label: "duplicate" },
+  c: { id: 2, label: "second" },
+});
+const right = createQueryable({ r: { code: 2 }, s: { code: 3 } });
+left[DIFFERENCE](right, row => row.id, row => row.code)[ENTRIES]();
+// [["a", { id: 1, label: "first" }]]
+left[INTERSECTION](right, row => row.id, row => row.code)[ENTRIES]();
+// [["c", { id: 2, label: "second" }]]
+left[UNION](right, row => row.id, row => row.code)[ENTRIES]();
+// a, c, s: original payloads, including the right-side { code: 3 }
+```
+
+`UNION` resolves value identities **before** output record key collisions.
+Equal identities collapse even if their keys differ. Different identities with
+the same key use `options.duplicateKeys`, the same `"error"` (default), `"first"`,
+or `"last"` policy as `createQuerySequence`. Default collisions throw
+`DuplicateKeyError`; `"first"` keeps the first payload, and `"last"` keeps the
+last payload at the first key position, including stored `undefined`. Key policy
+never resurrects an entry already discarded by identity deduplication. Thus a
+key collision policy may discard another distinct identity. `ENTRIES`,
+`TO_OBJECT`, and `PICK` all see the same resolved unique keys. Each input's own
+source key policy still runs before the set selectors.
+
+```ts
+const a = createQueryable({ shared: 1 });
+const b = createQueryable({ shared: 2 });
+// a[UNION](b, n => n, n => n); // throws: distinct identities share "shared"
+a[UNION](b, n => n, n => n, { duplicateKeys: "first" })[ENTRIES]();
+// [["shared", 1]]
+a[UNION](b, n => n, n => n, { duplicateKeys: "last" })[ENTRIES]();
+// [["shared", 2]]
+```
+
+`DIFFERENCE` and `INTERSECTION` consume the entire right side into a membership
+Set before visiting the left, even when the left is empty. The right must be
+finite. They then stream the left and retain a Set of emitted identities.
+Selectors run exactly once for each visited entry: right selectors first, then
+left selectors in left order. `UNION` instead streams the left and then the
+right, with one selector call per visited entry and a Set of seen identities.
+The `"last"` output key policy additionally buffers all candidate output keys
+before its first yield.
+
+Empty sides yield the corresponding empty or unique surviving set, without
+calling selectors on an empty side. Eager operations execute at the call;
+lazy operations defer until consumption. `LIMIT(0)` on a lazy result reads
+neither side. Early terminals can stop the left membership scan or streaming
+union, but cannot bypass right-side membership buffering or the `"last"` key
+buffer. Acquired iterators close on early exit or failure. Errors propagate
+unchanged. Every lazy consumption rebuilds membership, seen identities, and key
+state without memoization, including after errors or early exit; changes to
+live query records and repeatable source factories are visible next time.
 ## Functional composition
 
 Lowercase adapters call the existing Symbol methods with their receiver intact.

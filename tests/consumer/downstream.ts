@@ -1,9 +1,10 @@
 import { LAZY, VALUES } from "@ilokesto/queryable";
 import {
+  breadthRows, depthRows,
   asyncMapped, asyncQuery, asyncValues, fallbackFactory, fallbackValue, guardedEntry, guardedSingle, groups,
   lazy, lifetimeQuery, literalCounts, literalFold, narrowed, ordered, record, recoveredQuery, retriedQuery, stats,
 } from "./dist/consumer.js";
-import type { AsyncQuerySequence, NumericStats } from "@ilokesto/queryable";
+import type { AsyncQuerySequence, NumericStats, TraversalNode } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "./dist/consumer.js";
 
 export const forwardedRecord: Queryable<string | number> = record;
@@ -28,3 +29,13 @@ export const forwardedEntry: [string, string] | undefined = guardedEntry;
 export const forwardedSingle: number | undefined = guardedSingle;
 export const forwardedFallback: string | number | boolean = fallbackValue;
 export const forwardedFactoryFallback: string | number | boolean = fallbackFactory;
+export const forwardedBreadth: QuerySequence<TraversalNode<string | number>> = breadthRows;
+export const forwardedDepth: QuerySequence<TraversalNode<string | number>> = depthRows;
+export const forwardedPaths: ReadonlyArray<readonly string[]> = depthRows[VALUES]().map(row => row.path);
+
+import { setDifference, setIntersection, setOrderedUnion, setUnion } from "./dist/consumer.js";
+
+export const forwardedDifference: Queryable<{ id: number; name: string }> = setDifference;
+export const forwardedIntersection: QuerySequence<{ id: number; name: string }> = setIntersection;
+export const forwardedSetUnion: Queryable<{ id: number; name: string } | { code: number }> = setUnion;
+export const forwardedOrderedUnion: QuerySequence<{ id: number; name: string } | { code: number }> = setOrderedUnion;
