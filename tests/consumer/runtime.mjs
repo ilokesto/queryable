@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { ENTRIES, LAZY, MAP, MAP_CONCURRENT, SORT, VALUES, createAsyncQuerySequence, createQueryable, iterateAsyncEntries } from '@ilokesto/queryable';
-import { concurrentMapped, concurrentView, found, groups, mapped, narrowed, recoveredQuery, retriedQuery, total, values } from './dist/consumer.js';
+import { concurrentMapped, concurrentView, found, groups, joinGroups, joinPairs, leftPairs, mapped, narrowed, recoveredQuery, retriedQuery, total, values } from './dist/consumer.js';
 
 assert.deepEqual(values, ['one']);
 assert.deepEqual(narrowed[VALUES](), ['one']);
@@ -37,3 +37,12 @@ assert.deepEqual(await iterator.next(), { done: false, value: ['a', 'first'] });
 assert.equal((await iterator.next()).done, true);
 assert.deepEqual(await recoveredQuery[VALUES](), ['recovered']);
 assert.deepEqual(await retriedQuery[VALUES](), [7]);
+assert.deepEqual(joinGroups[VALUES](), [1, 1]);
+assert.deepEqual(joinPairs[VALUES](), [6, 2]);
+assert.deepEqual(leftPairs[VALUES](), [true, true]);
+
+const { setDifference, setIntersection, setUnion, setOrderedUnion } = await import('./dist/consumer.js');
+assert.deepEqual(setDifference[VALUES](), [{ id: 1, name: 'one' }]);
+assert.deepEqual(setIntersection[VALUES](), []);
+assert.deepEqual(setUnion[VALUES](), [{ id: 1, name: 'one' }, { code: 2 }]);
+assert.deepEqual(setOrderedUnion[VALUES](), setUnion[VALUES]());

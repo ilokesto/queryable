@@ -1,11 +1,12 @@
 import {
   MAP_CONCURRENT,
+  BFS, DFS, GROUP_JOIN, INNER_JOIN, LEFT_JOIN,
   AT, COUNT_BY, EVERY, FALLBACK, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
   INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
   ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable,
   createRetryAsyncQuerySequence, iterateAsyncEntries,
 } from "@ilokesto/queryable";
-import type { ConcurrentMapOptions, Queryable, QuerySequence } from "@ilokesto/queryable";
+import type { ConcurrentMapOptions, Queryable, QuerySequence, TraversalContext, TraversalNode } from "@ilokesto/queryable";
 
 export type { Queryable, QuerySequence } from "@ilokesto/queryable";
 export * from "./predicate-types.js";
@@ -84,3 +85,34 @@ export const empty: boolean = lazy[IS_EMPTY]();
 export const contains: boolean = ordered[INCLUDES](2);
 export const fallbackValue = record[FIRST_OR](false);
 export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
+
+export const breadthRows: QuerySequence<TraversalNode<string | number>> = record[BFS](
+  (value, context: TraversalContext<string | number>) => context.depth < 1 ? [["child", value]] : [],
+  (_value, context) => JSON.stringify(context.path),
+);
+export const depthRows = lazy[DFS](
+  (value, context) => context.depth < 1 ? [["child", value]] : [],
+  (_value, context) => JSON.stringify(context.path),
+  { maxDepth: 1, visitIdentity: (_value, context) => JSON.stringify(context.path) },
+);
+const joinInner = createQueryable({ x: 3, y: 1 });
+export const joinGroups: Queryable<number> = record[GROUP_JOIN](
+  joinInner, value => String(value).length, value => value,
+  (_value, matches) => matches.length,
+);
+export const joinPairs: QuerySequence<number> = mapped[INNER_JOIN](
+  joinInner, value => value, value => value,
+  (value, match, key) => [`${key}/${match.key}`, value + match.value],
+);
+export const leftPairs: QuerySequence<boolean> = lazy[LEFT_JOIN](
+  joinInner, value => String(value).length, value => value,
+  (_value, match, key) => [key, match.matched],
+);
+import { DIFFERENCE, INTERSECTION, UNION } from "@ilokesto/queryable";
+
+const setLeft = createQueryable({ a: { id: 1, name: "one" } });
+const setRight = createQueryable({ b: { code: 2 } });
+export const setDifference = setLeft[DIFFERENCE](setRight, value => value.id, value => value.code);
+export const setIntersection = setLeft[LAZY]()[INTERSECTION](setRight, value => value.id, value => value.code);
+export const setUnion = setLeft[UNION](setRight, value => value.id, value => value.code, { duplicateKeys: "error" });
+export const setOrderedUnion = setLeft[SORT](() => 0)[UNION](setRight, value => value.id, value => value.code);
