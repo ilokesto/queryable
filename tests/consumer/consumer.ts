@@ -1,9 +1,9 @@
 import {
-  AT, COUNT_BY, EVERY, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY,
+  AT, BFS, COUNT_BY, DFS, EVERY, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY,
   INCLUDES, IS_EMPTY, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
   VALUES, WHERE, createQueryable,
 } from "@ilokesto/queryable";
-import type { Queryable, QuerySequence } from "@ilokesto/queryable";
+import type { Queryable, QuerySequence, TraversalContext, TraversalNode } from "@ilokesto/queryable";
 
 export type { Queryable, QuerySequence } from "@ilokesto/queryable";
 
@@ -43,3 +43,13 @@ export const empty: boolean = lazy[IS_EMPTY]();
 export const contains: boolean = ordered[INCLUDES](2);
 export const fallbackValue = record[FIRST_OR](false);
 export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
+
+export const breadthRows: QuerySequence<TraversalNode<string | number>> = record[BFS](
+  (value, context: TraversalContext<string | number>) => context.depth < 1 ? [["child", value]] : [],
+  (_value, context) => JSON.stringify(context.path),
+);
+export const depthRows = lazy[DFS](
+  (value, context) => context.depth < 1 ? [["child", value]] : [],
+  (_value, context) => JSON.stringify(context.path),
+  { maxDepth: 1, visitIdentity: (_value, context) => JSON.stringify(context.path) },
+);

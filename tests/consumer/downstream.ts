@@ -1,9 +1,9 @@
 import { LAZY, VALUES } from "@ilokesto/queryable";
 import {
   fallbackFactory, fallbackValue, guardedEntry, guardedSingle, groups,
-  lazy, literalCounts, literalFold, narrowed, ordered, record, stats,
+  breadthRows, depthRows, lazy, literalCounts, literalFold, narrowed, ordered, record, stats,
 } from "./dist/consumer.js";
-import type { NumericStats } from "@ilokesto/queryable";
+import type { NumericStats, TraversalNode } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "./dist/consumer.js";
 
 export const forwardedRecord: Queryable<string | number> = record;
@@ -22,3 +22,6 @@ export const forwardedEntry: [string, string] | undefined = guardedEntry;
 export const forwardedSingle: number | undefined = guardedSingle;
 export const forwardedFallback: string | number | boolean = fallbackValue;
 export const forwardedFactoryFallback: string | number | boolean = fallbackFactory;
+export const forwardedBreadth: QuerySequence<TraversalNode<string | number>> = breadthRows;
+export const forwardedDepth: QuerySequence<TraversalNode<string | number>> = depthRows;
+export const forwardedPaths: ReadonlyArray<readonly string[]> = depthRows[VALUES]().map(row => row.path);

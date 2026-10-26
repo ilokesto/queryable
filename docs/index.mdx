@@ -274,3 +274,80 @@ therefore reject duplicate keys by default instead of silently overwriting them.
 `PICK`, grouping, sorting, and collection outputs receive the same unique-key
 entries. This is also the identity boundary for future multi-source operations.
 `TO_OBJECT` still intentionally restores native object ordering for integer keys.
+
+## Hierarchy traversal
+
+`query[BFS](children, resultKey, options?)` and
+`query[DFS](children, resultKey, options?)` always return a lazy, ordered
+`QuerySequence<TraversalNode<T>>`, including when called on an eager record.
+Both selectors receive `(value, context)`. The children selector returns an
+`Iterable<readonly [string, T]>` in sibling order; it must return a fresh iterator
+or repeatable iterable on each call. Local keys need not be globally unique.
+The required result-key selector assigns each generated row its output identity;
+the common `duplicateKeys: "error" | "first" | "last"` boundary applies unchanged.
+It does not prune subtrees: even rows dropped by `"first"` still expand.
+
+```ts
+import { createQueryable, BFS, DFS, MAP, VALUES } from "@ilokesto/queryable";
+import type { TraversalContext } from "@ilokesto/queryable";
+
+interface Node {
+  name: string;
+  children: ReadonlyArray<readonly [string, Node]>;
+}
+const query = createQueryable<Node>({
+  root: {
+    name: "root",
+    children: [
+      ["left", { name: "left", children: [["leaf", { name: "leaf", children: [] }]] }],
+      ["right", { name: "right", children: [] }],
+    ],
+  },
+});
+const children = (node: Node) => node.children;
+const key = (_node: Node, context: TraversalContext<Node>) => JSON.stringify(context.path);
+query[BFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "right", "leaf"]
+query[DFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "leaf", "right"]
+```
+
+Each row has `value` plus the same context supplied to selectors:
+`key` is the original local input key, `root` is the original root value,
+`rootKey` is its input key, `path` contains local keys including the root key,
+and `depth` is zero for roots. Output keys never replace this context. Payloads
+and roots remain shallow references and are never inspected for identity.
+`path` returns a fresh readonly-typed array on each read; paths are stored
+internally as links so a deep chain does not allocate every full path unless
+requested. Materializing all paths can still require quadratic space.
+
+BFS emits all roots first, then each level in root and child iterable order.
+It uses an iterative queue and retains the frontier's child iterators. DFS uses
+an iterative iterator stack, emits preorder, and finishes a root's subtree before
+the next root; its active stack grows with depth. Neither uses recursive calls
+or reverses sibling order. BFS needs a finite current level to reach the next;
+an infinite DFS branch can prevent reaching later siblings or roots.
+
+`maxDepth` is inclusive and defaults to `Infinity`. Otherwise it must be a
+nonnegative safe integer; invalid bounds throw `RangeError` at operation
+construction, before acquisition. Zero emits only roots. Nodes at the bound do
+not call the children selector.
+
+Without `visitIdentity`, each occurrence is visited independently: repeated
+references produce separate paths and cycles need a finite bound or prefix
+consumer to terminate. With `visitIdentity(value, context)`, a fresh global
+SameValueZero Set is used per consumption, across roots. The first identity in
+traversal order wins; later occurrences emit nothing and do not expand. Use
+`visitIdentity: value => value` for reference identity, or select a domain ID.
+This visitation policy is separate from output-key collisions.
+
+Construction and `LIMIT(0)` do not acquire roots or run selectors. A node is
+yielded before its children are selected, so a prefix consumer never expands
+its final requested node. Early exit and selector, child iterator, or downstream
+errors close all still-acquired traversal iterators; all returns are attempted
+even if one throws. The original traversal error takes precedence over cleanup
+errors; an otherwise successful early close reports the first cleanup error.
+Natural exhaustion does not call `return()` on an exhausted iterator.
+Each consumption creates fresh queues, stacks, visit state, and output-key
+state and rereads the live source. `"last"` must buffer the entire traversal
+before its first result, so it cannot short-circuit an unbounded traversal.
