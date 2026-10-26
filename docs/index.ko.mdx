@@ -465,3 +465,80 @@ finalizer가 끝나야 consumer도 끝납니다.
 실패에서는 실행하지 않습니다. `LIMIT(1)` 뒤의 hook은 제한된 단계의 정상 완료를,
 앞의 hook은 조기 반환을 봅니다. 미사용 쿼리와 downstream `LIMIT(0)`은 원본도
 hook도 실행하지 않습니다. 메서드는 공유·동결하며 매 소비의 실행 상태는 독립적입니다.
+
+## 동시 작업 수를 제한한 비동기 매핑
+
+`MAP_CONCURRENT(mapper, options)`는 비동기 callback을 명시적으로 겹쳐 실행합니다.
+기존 비동기 `MAP`은 순차 실행을 유지합니다. 새 공유 Symbol 메서드는 live·repeatable·
+nonmemoized `AsyncQuerySequence<Awaited<U>>`를 반환하며 소비마다 커서·스케줄러·
+자식 controller를 새로 만듭니다.
+
+```ts
+import { createAsyncQuerySequence, ENTRIES, MAP_CONCURRENT } from "@ilokesto/queryable";
+
+const query = createAsyncQuerySequence(() => [["a", 1], ["b", 2]])
+  [MAP_CONCURRENT](async (value, originalKey, signal) => {
+    signal.throwIfAborted(); // 취소 가능한 외부 작업에도 signal을 전달합니다
+    return `${originalKey}:${value * 2}`;
+  }, { concurrency: 4, prefetch: 2, reorderBuffer: 3 });
+await query[ENTRIES](); // [["a", "a:2"], ["b", "b:4"]]
+```
+
+`ConcurrentMapOptions`는 단계 생성 시 동기적으로 검증하고 복사합니다.
+필수 `concurrency`는 양의 안전한 정수, 기본값 `1`인 `prefetch`도 양의 안전한
+정수여야 합니다. `reorderBuffer` 기본값은 `concurrency - 1`이며 0 이상의 안전한
+정수여야 합니다. `ordered` 기본값은 `true`이고 boolean만 받습니다.
+소수·`NaN`·무한대·안전 범위 밖 정수·허용 범위 밖 값은 예외이며 강제 변환하지 않습니다.
+
+세 한도는 독립적입니다.
+
+- 실행 중인 callback은 최대 `concurrency`개입니다.
+- 매핑 전 입력 큐와 하나의 pending upstream `next()`를 합쳐 최대 `prefetch`개
+  슬롯을 사용합니다. upstream pull은 병렬이 아니라 순차 실행합니다.
+- callback을 시작하기 전에 결과 슬롯을 예약합니다. 시작했지만 출력하지 않은 작업은
+  최대 `reorderBuffer + 1`개이며, 하나는 선두·전달 슬롯이고 나머지는 `reorderBuffer`
+  슬롯입니다. 따라서 ordered 모드에서 막힌 선두 뒤의 완료 결과는 `reorderBuffer`개를
+  넘지 않습니다. 선두를 포함하거나 unordered 모드이면 미전달 완료 결과는
+  최대 `reorderBuffer + 1`개입니다.
+
+스케줄러의 entry·pull 슬롯 합계는 최대 `prefetch + reorderBuffer + 1`입니다.
+바이트 수·외부 작업·terminal 출력 배열·다른 단계의 메모리 한도는 아닙니다.
+factory의 중복 키 검사는 키를 보관하고 `"last"`는 원본 전체를 버퍼링하며,
+정렬·그룹화도 기존 버퍼링 계약을 유지합니다. 작은 reorder 한도에서는 선두 지연 때문에
+worker가 의도적으로 유휴 상태가 됩니다. `reorderBuffer: 0`은 concurrency가 커도
+mapper 하나만 허용합니다. worker 수만 제한한다고 메모리가 제한되거나 빨라지지는
+않습니다. 비동기 작업이 겹칠 뿐 동기 callback이 CPU 병렬 작업으로 바뀌지 않습니다.
+window 전체가 찰 때까지 기다리지 않고 준비된 결과를 출력하므로 추가 upstream pull이
+pending이어도 이미 준비된 결과는 지연시키지 않습니다.
+
+기본 ordered 모드는 입력 순서로 출력합니다. `{ concurrency: 4, ordered: false }`는
+관측한 mapper 완료 순서이며 동시에 settle되면 handler 실행 순서를 따릅니다.
+두 모드 모두 숫자처럼 보이는 키·특수 키를 포함한 원래 문자열 키와 저장된 `undefined`를
+보존하고 재번호를 매기지 않습니다. 원본 중복 키 정책은 먼저 적용됩니다.
+빈 입력은 mapper를 호출하지 않고 기존 빈 terminal 결과를 반환합니다.
+`LIMIT(0)`은 원본을 획득하지 않습니다.
+
+callback은 입력 순서로 시작하며 `(value, originalKey, signal)`을 받습니다.
+이 signal은 factory에 설정한 선택적 signal이 아니라 **소비별 자식 signal**입니다.
+설정한 signal의 abort 원인을 자식에게 전달하고, 해당 단계의 조기 종료·실패·정상
+완료에서는 부모 controller를 취소하지 않고 자식만 취소합니다. 기존 upstream factory와
+일반 callback은 원래 설정한 signal을 계속 받습니다. mapper의 외부 작업에도 자식
+signal을 전달해야 협력적으로 취소할 수 있으며 무시하는 작업을 강제로 멈추지는 않습니다.
+
+현재 제한된 window 이후의 추가 demand가 없거나 실패·조기 결과·abort를 관측한 뒤에는
+새 pull·callback을 시작하지 않습니다. 이미 시작한 작업은 소비자가 멈춘 동안에도
+settle될 수 있습니다. ordered 선두가 pending이어도 먼저 관측한 오류로 즉시 실패하며,
+던진 값이 `undefined`여도 동일성을 유지합니다. 중단된 작업과 정리의 늦은 rejection도
+관찰합니다. 소비자 대기 중 실패하면 upstream 정리를 시작하고 다음 demand에 오류를 전달합니다.
+
+획득한 upstream iterator가 이미 소진되지 않았다면 `return()`을 최대 한 번 시도합니다.
+upstream pull이 pending이거나 오류·abort 경로이면 return 결과를 관찰하되 기다리지 않아
+비협력적인 pull·형제 mapper가 조기 결과를 막지 않습니다. 그 외에는 return 정리를
+기다리고 정리 실패로 소비가 거부됩니다. 네이티브 upstream async generator는 pending
+작업 뒤에 return을 큐잉하므로 내부 정리와 upstream `FINALIZE`가 늦어질 수 있습니다.
+upstream 대기 자체를 중단하려면 원래 설정한 signal의 abort가 필요할 수 있습니다.
+공개 async-generator view도 프로토콜 호출을 순차 처리하므로 현재 pending인 소비자
+`next()`를 중단하려면 뒤에 `return()`을 큐잉하지 말고 설정한 signal을 abort하세요.
+terminal 종료 전에 반드시 기다릴 수명 hook은 downstream에 배치하세요.
+prefetch가 짧은 upstream을 먼저 소진하면 downstream 조기 결과보다 앞서 upstream의
+`ON_COMPLETE`가 실행될 수도 있습니다.

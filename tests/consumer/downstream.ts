@@ -1,9 +1,9 @@
 import { LAZY, VALUES } from "@ilokesto/queryable";
 import {
   asyncMapped, asyncQuery, asyncValues, fallbackFactory, fallbackValue, guardedEntry, guardedSingle, groups,
-  lazy, lifetimeQuery, literalCounts, literalFold, narrowed, ordered, record, stats,
+  concurrentMapped, concurrentOptions, concurrentView, lazy, lifetimeQuery, literalCounts, literalFold, narrowed, ordered, record, stats,
 } from "./dist/consumer.js";
-import type { AsyncQuerySequence, NumericStats } from "@ilokesto/queryable";
+import type { AsyncQuerySequence, ConcurrentMapOptions, NumericStats } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence } from "./dist/consumer.js";
 
 export const forwardedRecord: Queryable<string | number> = record;
@@ -15,6 +15,9 @@ export const forwardedAsync: AsyncQuerySequence<number> = asyncQuery;
 export const forwardedAsyncMapped: AsyncQuerySequence<string> = asyncMapped;
 export const forwardedAsyncValues: Promise<string[]> = asyncValues;
 export const forwardedLifetime: AsyncQuerySequence<number> = lifetimeQuery;
+export const forwardedConcurrent: AsyncQuerySequence<string> = concurrentMapped;
+export const forwardedConcurrentOptions: ConcurrentMapOptions = concurrentOptions;
+export const forwardedConcurrentView: AsyncIterable<[string, string]> = concurrentView;
 export const forwardedCount: number | undefined = literalCounts.positive;
 export const forwardedFold:
   { group: "positive" | "other"; sum: number; keys: string[] } | undefined = literalFold.positive;

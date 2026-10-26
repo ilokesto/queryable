@@ -2,6 +2,8 @@ import { DuplicateKeyError } from "./entries.js";
 import type { KeyCollisionPolicy } from "./entries.js";
 import { FINALIZE, ON_COMPLETE, completeEntries, finalizeEntries, waitFor } from "./lifetime.js";
 import type { ConsumptionOutcome } from "./lifetime.js";
+import { MAP_CONCURRENT, concurrentEntries, concurrentMapOptions } from "./concurrency.js";
+import type { ConcurrentMapOptions } from "./concurrency.js";
 import { COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, SOME, SORT, VALUES, WHERE } from "./index.js";
 
 type Entry<T> = readonly [string, T];
@@ -26,6 +28,11 @@ const ITERATE = Symbol("asyncIterate");
 export interface AsyncQuerySequence<T> {
   [ITERATE](): AsyncIterable<Entry<T>>;
   [MAP]<U>(this: AsyncQuerySequence<T>, fn: (value: T, key: string, signal: AbortSignal | undefined) => U): AsyncQuerySequence<Awaited<U>>;
+  [MAP_CONCURRENT]<U>(
+    this: AsyncQuerySequence<T>,
+    fn: (value: T, key: string, signal: AbortSignal) => U,
+    options: ConcurrentMapOptions,
+  ): AsyncQuerySequence<Awaited<U>>;
   [WHERE]<S extends T>(this: AsyncQuerySequence<T>, predicate: (value: T, key: string, signal: AbortSignal | undefined) => value is S): AsyncQuerySequence<S>;
   [WHERE](this: AsyncQuerySequence<T>, predicate: (value: T, key: string, signal: AbortSignal | undefined) => Awaitable<boolean>): AsyncQuerySequence<T>;
   [COUNT](this: AsyncQuerySequence<T>): Promise<number>;
@@ -221,6 +228,12 @@ function createSequenceConstructor(): SequenceConstructor {
     }
     [MAP]<U>(fn: (value: T, key: string, signal: AbortSignal | undefined) => U): AsyncQuerySequence<Awaited<U>> {
       return sequence(defer(mapEntries, this.source, fn, this.signal), this.signal);
+    }
+    [MAP_CONCURRENT]<U>(
+      fn: (value: T, key: string, signal: AbortSignal) => U,
+      options: ConcurrentMapOptions,
+    ): AsyncQuerySequence<Awaited<U>> {
+      return sequence(defer(concurrentEntries, this.source, fn, concurrentMapOptions(options), this.signal), this.signal);
     }
     [WHERE]<S extends T>(predicate: (value: T, key: string, signal: AbortSignal | undefined) => value is S): AsyncQuerySequence<S>;
     [WHERE](predicate: (value: T, key: string, signal: AbortSignal | undefined) => Awaitable<boolean>): AsyncQuerySequence<T>;
