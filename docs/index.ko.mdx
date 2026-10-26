@@ -442,6 +442,83 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
 
+## Selector 기반 집합
+
+`DIFFERENCE`, `INTERSECTION`, `UNION`은 우측 쿼리와 필수 selector 두 개를
+받습니다. `leftSelector(leftValue, originalKey)`와
+`rightSelector(rightValue, originalKey)`의 값 타입은 달라도 되지만 반환하는
+identity 타입은 같습니다. 비교는 JavaScript Set의 SameValueZero입니다.
+`NaN`끼리, 부호가 다른 0끼리는 같고 `undefined`도 정상 identity입니다.
+객체는 필드가 아니라 참조로 비교합니다. selector가 명시적으로 반환하지
+않으면 레코드 키는 membership identity가 아닙니다.
+
+| 연산 | 결과 |
+| --- | --- |
+| `[DIFFERENCE](right, leftSelector, rightSelector)` | 우측에 없는 identity별 첫 좌측 원본 entry |
+| `[INTERSECTION](right, leftSelector, rightSelector)` | 우측에 있는 identity별 첫 좌측 원본 entry |
+| `[UNION](right, leftSelector, rightSelector, options?)` | 좌측 다음 우측 순서로 identity별 첫 원본 entry; 값 타입은 `T \| U` |
+
+세 연산은 수학적 집합입니다. multiset이나 중복을 유지하는 membership 필터가
+아니므로 양측의 중복 identity가 결과 개수를 늘리지 않습니다. 첫 해당 entry의
+원래 키와 값 참조를 유지합니다. receiver 모드도 유지하여 레코드는 네이티브
+객체 키 순서의 레코드, 정렬·지연 시퀀스는 시퀀스를 반환합니다. 우측 쿼리의
+모드가 receiver의 실행 시점을 바꾸지는 않습니다.
+
+```ts
+import {
+  createQueryable, DIFFERENCE, INTERSECTION, UNION, ENTRIES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({
+  a: { id: 1, label: "first" },
+  b: { id: 1, label: "duplicate" },
+  c: { id: 2, label: "second" },
+});
+const right = createQueryable({ r: { code: 2 }, s: { code: 3 } });
+left[DIFFERENCE](right, row => row.id, row => row.code)[ENTRIES]();
+// [["a", { id: 1, label: "first" }]]
+left[INTERSECTION](right, row => row.id, row => row.code)[ENTRIES]();
+// [["c", { id: 2, label: "second" }]]
+left[UNION](right, row => row.id, row => row.code)[ENTRIES]();
+// a, c, s: 우측 { code: 3 }을 포함한 원본 값
+```
+
+`UNION`은 값 identity 중복을 먼저 제거한 다음 결과 레코드 키 충돌을 처리합니다.
+키가 달라도 identity가 같으면 하나만 남습니다. identity가 다르지만 키가 같으면
+`createQuerySequence`와 동일한 `options.duplicateKeys`의 `"error"`(기본값),
+`"first"`, `"last"` 정책을 적용합니다. 기본 충돌은 `DuplicateKeyError`를 던지고,
+`"first"`는 첫 값, `"last"`는 키의 첫 위치에서 마지막 값을 유지합니다.
+저장된 `undefined`도 정상 값입니다. 키 정책이 이미 identity 중복으로 제거한
+entry를 되살리지는 않으므로 서로 다른 identity도 키 정책으로 탈락할 수
+있습니다. `ENTRIES`, `TO_OBJECT`, `PICK`은 모두 같은 고유 키 결과를 받습니다.
+각 입력의 원본 키 정책은 집합 selector보다 먼저 실행됩니다.
+
+```ts
+const a = createQueryable({ shared: 1 });
+const b = createQueryable({ shared: 2 });
+// a[UNION](b, n => n, n => n); // 다른 identity가 "shared"를 공유하여 예외
+a[UNION](b, n => n, n => n, { duplicateKeys: "first" })[ENTRIES]();
+// [["shared", 1]]
+a[UNION](b, n => n, n => n, { duplicateKeys: "last" })[ENTRIES]();
+// [["shared", 2]]
+```
+
+`DIFFERENCE`와 `INTERSECTION`은 좌측을 읽기 전에 우측 전체를 membership Set으로
+버퍼링하며 좌측이 비어 있어도 같습니다. 우측은 유한해야 합니다. 이후 좌측을
+streaming하고 출력한 identity의 Set을 보관합니다. 실제 방문한 entry마다
+selector를 한 번 호출하며 우측 selector 전체 다음 좌측 selector 순서입니다.
+`UNION`은 좌측 다음 우측을 streaming하면서 방문한 entry마다 selector를 한 번
+호출하고 관찰한 identity Set을 유지합니다. 결과 키 정책 `"last"`는 추가로
+모든 후보 결과 키를 버퍼링한 뒤 첫 항목을 출력합니다.
+
+빈 입력은 해당하는 빈 집합 또는 남은 쪽의 고유 집합을 만들며 빈 쪽 selector는
+호출하지 않습니다. 즉시 평가 연산은 호출 시점, 지연 연산은 소비 시점에
+실행합니다. 지연 결과의 `LIMIT(0)`은 양측을 모두 읽지 않습니다. 조기 종단은
+좌측 membership 순회나 streaming 합집합을 멈추지만 우측 membership 또는
+`"last"` 키 버퍼링은 생략하지 않습니다. 조기 종료나 예외는 획득한 iterator를
+닫으며 오류는 그대로 전파합니다. 지연 소비마다 membership, identity, 키 상태를
+새로 만들고 메모이제이션하지 않습니다. 예외·조기 종료 뒤에도 같으며 살아 있는
+쿼리 레코드와 반복 가능한 원본 factory의 변경은 다음 소비에 반영됩니다.
 ## 함수형 조합
 
 소문자 adapter는 receiver를 유지하며 기존 Symbol 메서드를 호출합니다.

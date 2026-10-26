@@ -46,6 +46,9 @@ export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js"
 
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { DIFFERENCE, INTERSECTION, UNION, membershipEntries, unionEntries } from "./sets.js";
+
+export { DIFFERENCE, INTERSECTION, UNION } from "./sets.js";
 import { CONCAT, ZIP, FLAT_MAP, concatEntries, flatMapEntries, managedEntries, zipEntries } from "./combine.js";
 
 export { CONCAT, ZIP, FLAT_MAP } from "./combine.js";
@@ -173,6 +176,22 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T>, Stateful<T, M>, WindowOperations<T, Result<T, M>> {
+  /** First original left entry per identity absent from the buffered right side. */
+  [DIFFERENCE]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First original left entry per identity present on the buffered right side. */
+  [INTERSECTION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First identity wins left-to-right; output key collisions use duplicateKeys. */
+  [UNION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Result<T | U, M>;
   /** Append explicitly keyed sources; duplicateKeys defaults to error. */
   [CONCAT]<U>(this: Result<T, M>, sources: readonly (Queryable<U> | QuerySequence<U>)[], options?: QuerySequenceOptions): QuerySequence<T | U>;
   /** Pair positions, retaining the receiver key; pulls left to right until shortest. */
@@ -550,6 +569,27 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [DIFFERENCE]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, false));
+  },
+  [INTERSECTION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, true));
+  },
+  [UNION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Queryable<T | U> {
+    return fromEntries(iterateEntries(createQuerySequence(
+      () => unionEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector), options,
+    )));
+  },
   ...combinationMethods,
   [COMBINE]<U>(factory: EntrySourceFactory<U>, options?: QuerySequenceOptions): QuerySequence<U> {
     return new Sequence(Array.from(iterateEntries(createQuerySequence(factory, options))), false);
@@ -690,6 +730,28 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [DIFFERENCE]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, false));
+  }
+  [INTERSECTION]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, true));
+  }
+  [UNION]<U, K>(
+    right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<T | U> {
+    return this[COMBINE]<T | U>(
+      () => unionEntries(this.source, iterateEntries(right), leftSelector, rightSelector), options,
+    );
   }
 
   private buffers<U>(source: Iterable<Entry<U>>, copy: (value: U) => U): Sequence<U> {

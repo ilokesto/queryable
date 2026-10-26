@@ -65,3 +65,12 @@ export const empty: boolean = lazy[IS_EMPTY]();
 export const contains: boolean = ordered[INCLUDES](2);
 export const fallbackValue = record[FIRST_OR](false);
 export const fallbackFactory = ordered[FIRST_OR_ELSE](() => false);
+
+import { DIFFERENCE, INTERSECTION, UNION } from "@ilokesto/queryable";
+
+const setLeft = createQueryable({ a: { id: 1, name: "one" } });
+const setRight = createQueryable({ b: { code: 2 } });
+export const setDifference = setLeft[DIFFERENCE](setRight, value => value.id, value => value.code);
+export const setIntersection = setLeft[LAZY]()[INTERSECTION](setRight, value => value.id, value => value.code);
+export const setUnion = setLeft[UNION](setRight, value => value.id, value => value.code, { duplicateKeys: "error" });
+export const setOrderedUnion = setLeft[SORT](() => 0)[UNION](setRight, value => value.id, value => value.code);

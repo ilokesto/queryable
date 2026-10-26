@@ -12,3 +12,9 @@ const query = createQueryable({ 1: 10, 2: 20 });
 assert.deepEqual(query[SORT]((a, b) => b - a)[VALUES](), [20, 10]);
 assert.equal(query[MAP], createQueryable({ a: 1 })[MAP]);
 assert.equal(query[LAZY]()[MAP], mapped[MAP]);
+
+const { setDifference, setIntersection, setUnion, setOrderedUnion } = await import('./dist/consumer.js');
+assert.deepEqual(setDifference[VALUES](), [{ id: 1, name: 'one' }]);
+assert.deepEqual(setIntersection[VALUES](), []);
+assert.deepEqual(setUnion[VALUES](), [{ id: 1, name: 'one' }, { code: 2 }]);
+assert.deepEqual(setOrderedUnion[VALUES](), setUnion[VALUES]());
