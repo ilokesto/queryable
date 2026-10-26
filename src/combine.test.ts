@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
-  CONCAT, ZIP, FLAT_MAP, DuplicateKeyError, ENTRIES, FIRST, LAZY, LIMIT, MAP, PICK,
+  CONCAT, ZIP, FLAT_MAP, COUNT, DuplicateKeyError, ENTRIES, FIRST, LAZY, LIMIT, MAP, PICK,
   SORT, TO_OBJECT, VALUES, createQueryable, createQuerySequence, iterateEntries,
 } from "./index.js";
 import type { EntrySourceFactory, QuerySequence } from "./index.js";
@@ -39,6 +39,18 @@ function tracked<T>(
   };
 }
 
+describe("standalone iterator compatibility", () => {
+  it("normal exhaustion does not invoke return even when cleanup would throw", () => {
+    const trace: string[] = [];
+    const query = createQuerySequence(tracked("source", [["a", undefined]], trace, undefined, new Error("cleanup")));
+
+    expect(query[COUNT]()).toBe(1);
+    expect(query[VALUES]()).toEqual([undefined]);
+    expect(query[ENTRIES]()).toEqual([["a", undefined]]);
+    expect(trace.filter(event => event.endsWith(":return"))).toEqual([]);
+  });
+});
+
 describe("CONCAT", () => {
   it("CONCAT: lazy prefix -> never acquires the later source and repeats freshly", () => {
     const trace: string[] = [];
@@ -61,7 +73,7 @@ describe("CONCAT", () => {
     const right = createQuerySequence(tracked("right", [["c", 3]], trace));
     const query = createQueryable({ a: 1, b: 2 })[SORT]((a, b) => b - a)[CONCAT]([right]);
 
-    expect(trace).toEqual(["right:acquire", "right:next", "right:next", "right:return"]);
+    expect(trace).toEqual(["right:acquire", "right:next", "right:next"]);
     expect(query[ENTRIES]()).toEqual([["b", 2], ["a", 1], ["c", 3]]);
     expect(query[CONCAT]).toBe(createQueryable({})[CONCAT]);
     expect(Object.hasOwn(query, CONCAT)).toBe(false);
@@ -77,7 +89,7 @@ describe("CONCAT", () => {
     expect(createQueryable({})[CONCAT]([])[VALUES]()).toEqual([]);
   });
 
-  it("CONCAT: later next failure -> closes exhausted and failing sources and preserves the error", () => {
+  it("CONCAT: later next failure -> closes the failing source and preserves the error", () => {
     const trace: string[] = [];
     const primary = new Error("later next");
     const first = createQuerySequence(tracked("first", [["a", 1]], trace));
@@ -89,7 +101,7 @@ describe("CONCAT", () => {
 
     expect(caught).toBe(primary);
     expect(trace).toEqual([
-      "first:acquire", "first:next", "first:next", "first:return",
+      "first:acquire", "first:next", "first:next",
       "later:acquire", "later:next", "later:return",
     ]);
   });
@@ -118,7 +130,7 @@ describe("ZIP", () => {
     expect(values).toEqual([[1, "x", true]]);
     expect(trace).toEqual([
       "left:acquire", "left:next", "middle:acquire", "middle:next", "right:acquire", "right:next",
-      "left:next", "middle:next", "middle:return", "left:return", "right:return",
+      "left:next", "middle:next", "left:return", "right:return",
     ]);
   });
 
@@ -128,7 +140,7 @@ describe("ZIP", () => {
     const later = createQuerySequence(tracked("later", [["a", 1]], trace));
 
     expect(empty[ZIP](later)[VALUES]()).toEqual([]);
-    expect(trace).toEqual(["empty:acquire", "empty:next", "empty:return"]);
+    expect(trace).toEqual(["empty:acquire", "empty:next"]);
   });
 
   it("ZIP: early return and repeat -> closes each sibling exactly once per fresh iteration", () => {
