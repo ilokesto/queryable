@@ -22,3 +22,10 @@ export const forwardedEntry: [string, string] | undefined = guardedEntry;
 export const forwardedSingle: number | undefined = guardedSingle;
 export const forwardedFallback: string | number | boolean = fallbackValue;
 export const forwardedFactoryFallback: string | number | boolean = fallbackFactory;
+
+import { setDifference, setIntersection, setOrderedUnion, setUnion } from "./dist/consumer.js";
+
+export const forwardedDifference: Queryable<{ id: number; name: string }> = setDifference;
+export const forwardedIntersection: QuerySequence<{ id: number; name: string }> = setIntersection;
+export const forwardedSetUnion: Queryable<{ id: number; name: string } | { code: number }> = setUnion;
+export const forwardedOrderedUnion: QuerySequence<{ id: number; name: string } | { code: number }> = setOrderedUnion;

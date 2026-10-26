@@ -20,9 +20,11 @@ export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js"
 
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { DIFFERENCE, INTERSECTION, UNION, membershipEntries, unionEntries } from "./sets.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+export { DIFFERENCE, INTERSECTION, UNION } from "./sets.js";
 
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
@@ -150,6 +152,22 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T> {
+  /** First original left entry per identity absent from the buffered right side. */
+  [DIFFERENCE]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First original left entry per identity present on the buffered right side. */
+  [INTERSECTION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Result<T, M>;
+  /** First identity wins left-to-right; output key collisions use duplicateKeys. */
+  [UNION]<U, K>(
+    this: Result<T, M>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Result<T | U, M>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -443,6 +461,27 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [DIFFERENCE]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, false));
+  },
+  [INTERSECTION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): Queryable<T> {
+    return fromEntries(membershipEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector, true));
+  },
+  [UNION]<T, U, K>(
+    this: Queryable<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): Queryable<T | U> {
+    return fromEntries(iterateEntries(createQuerySequence(
+      () => unionEntries(recordEntries(this), iterateEntries(right), leftSelector, rightSelector), options,
+    )));
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
@@ -503,6 +542,28 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [DIFFERENCE]<U, K>(
+    this: Sequence<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, false));
+  }
+  [INTERSECTION]<U, K>(
+    this: Sequence<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+  ): QuerySequence<T> {
+    return this.next(defer(membershipEntries, this.source, iterateEntries(right), leftSelector, rightSelector, true));
+  }
+  [UNION]<U, K>(
+    this: Sequence<T>, right: QuerySequence<U>,
+    leftSelector: (value: T, key: string) => K, rightSelector: (value: U, key: string) => K,
+    options?: QuerySequenceOptions,
+  ): QuerySequence<T | U> {
+    return this.next(iterateEntries(createQuerySequence(
+      () => unionEntries(this.source, iterateEntries(right), leftSelector, rightSelector), options,
+    )));
   }
 
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
