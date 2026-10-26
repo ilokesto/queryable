@@ -104,6 +104,59 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
 
+## Partition, running accumulators, and effects
+
+`PARTITION(predicate)` immediately consumes the query once and returns
+`[matching, nonmatching]`, two independent eager shallow snapshots even for a lazy
+source. The predicate receives `(value, originalKey)` exactly once per entry in
+query order. Records retain native object ordering; sequences retain their input
+order. Type guards narrow only the matching side; the nonmatching side keeps `T`
+because a guard may recognize only some values of its claimed type. Empty sides
+remain typed queries. Later source assignments do not alter either snapshot, but
+referenced values are still shared.
+
+```ts
+import {
+  createQueryable, PARTITION, SCAN, TAP, EACH, THROUGH, LAZY, LIMIT, VALUES,
+} from "@ilokesto/queryable";
+
+const mixed = createQueryable<string | number>({ a: "one", b: 2 });
+const [strings, rest] = mixed[PARTITION](value => typeof value === "string");
+// Queryable<string>, Queryable<string | number>
+
+const totals = createQueryable({ a: 1, b: 2, c: 3 })[LAZY]()
+  [SCAN]((sum, value, key) => sum + value, () => 0)
+  [TAP]((value, key) => { console.info(key, value); });
+totals[LIMIT](2)[VALUES](); // [1, 3]; effects only for a and b
+totals[EACH]((value, key) => { console.info(key, value); }); // all entries, again
+const firstTwo = totals[THROUGH](query => query[LIMIT](2)[VALUES]()); // number[]
+```
+
+`SCAN(reducer, seedFactory)` emits one accumulator at every original input key,
+preserving record/sequence mode. It does not emit an extra seed entry. The reducer
+receives `(accumulator, value, originalKey)`. The required zero-argument factory
+runs once at the start of each consumption, including empty consumption; an
+unconsumed lazy chain or downstream `LIMIT(0)` does not call it. Return a fresh
+mutable seed from the factory to keep lazy consumptions independent.
+
+Accumulators are **not cloned**: if the reducer mutates and returns the same
+object, earlier emitted values alias that object and observe its later mutations.
+Return a new object at each step when independent historical values are needed.
+Empty input emits nothing and does not call the reducer.
+
+`TAP(effect)` retains every original key and value identity. Like `SCAN`, it runs
+immediately on eager queries and on demand in lazy queries; each lazy consumption
+repeats the work against the live source without memoization. `LIMIT`, `FIND`,
+`FIRST`, and `SOME` can stop downstream demand early. `EACH(effect)` is a terminal:
+it visits entries in order, returns `void`, and does not collect a result array.
+Both effects receive `(value, originalKey)`; returning `false` does not stop them.
+Empty queries call neither effect.
+
+`THROUGH(fn)` immediately calls `fn` once with the exact query object, without
+consuming it, and preserves the function's return type and result identity.
+All five methods require their receiver, use shared frozen prototypes, and
+propagate callback exceptions without wrapping or changing the thrown value.
+
 ## Value distinctness
 
 | Operation | Result |
