@@ -1,3 +1,11 @@
+import {
+  MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K,
+  extremum, nthValue, rankKey, sortByEntries, topEntries, validatePosition,
+} from "./ordering.js";
+import type { OrderRules } from "./ordering.js";
+export { MAX_BY, MIN_BY, NTH_BY, RANK_BY, SORT_BY, TOP_K } from "./ordering.js";
+export type { OrderKey, OrderRule, OrderRules } from "./ordering.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -69,6 +77,13 @@ interface Source<T> {
 }
 
 interface Terminals<T> extends Source<T> {
+  /** Return the first minimum/maximum; empty input returns undefined. */
+  [MIN_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  [MAX_BY](this: Source<T>, ...rules: OrderRules<T>): T | undefined;
+  /** Select a zero-based position; negative positions count from the end. */
+  [NTH_BY](this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined;
+  /** Read the zero-based stable ordinal of an existing record key. */
+  [RANK_BY](this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined;
   /** Count records; consumes a lazy chain.
    * @example query[COUNT]()
    */
@@ -105,6 +120,10 @@ interface Terminals<T> extends Source<T> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T> {
+  /** Cache selector keys once per entry per consumption and sort lexicographically. */
+  [SORT_BY](this: Result<T, M>, ...rules: OrderRules<T>): QuerySequence<T>;
+  /** Keep at most K winners, then return them in stable sorted order. */
+  [TOP_K](this: Result<T, M>, k: number, ...rules: OrderRules<T>): QuerySequence<T>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -248,6 +267,19 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean)
 }
 
 const terminals = {
+  [MIN_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, false);
+  },
+  [MAX_BY]<T>(this: Source<T>, ...rules: OrderRules<T>): T | undefined {
+    return extremum(this[ITERATE](), rules, true);
+  },
+  [NTH_BY]<T>(this: Source<T>, index: number, ...rules: OrderRules<T>): T | undefined {
+    validatePosition(index, true);
+    return nthValue(this[ITERATE](), index, rules);
+  },
+  [RANK_BY]<T>(this: Source<T>, key: string, ...rules: OrderRules<T>): number | undefined {
+    return rankKey(this[ITERATE](), key, rules);
+  },
   [FIND]: find,
   [SOME]<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): boolean {
     for (const [key, value] of this[ITERATE]()) {
@@ -296,6 +328,13 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => bool
 
 const queryablePrototype = {
   ...terminals,
+  [SORT_BY]<T>(this: Queryable<T>, ...rules: OrderRules<T>): QuerySequence<T> {
+    return new Sequence(sortByEntries(recordEntries(this), rules), false);
+  },
+  [TOP_K]<T>(this: Queryable<T>, k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return new Sequence(topEntries(recordEntries(this), k, rules), false);
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
@@ -343,6 +382,14 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [SORT_BY](...rules: OrderRules<T>): QuerySequence<T> {
+    return this.next(defer(sortByEntries, this.source, rules));
+  }
+  [TOP_K](k: number, ...rules: OrderRules<T>): QuerySequence<T> {
+    validatePosition(k, false);
+    return this.next(defer(topEntries, this.source, k, rules));
   }
 
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;

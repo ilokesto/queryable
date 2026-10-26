@@ -103,3 +103,39 @@ const oddTotal = groups.odd?.[REDUCE]((sum, n) => sum + n, 0); // 4
 - Methods are shared and frozen, not bound per instance. This is a structural allocation choice, not a promise of a particular heap reduction or runtime speed.
 
 [Benchmark methodology](../bench/README.md) · [Measured results](../bench/RESULTS.md) · [Repository guide](../README.md)
+
+## Selector ordering and explicit selection
+
+```ts
+import {
+  createQueryable, SORT_BY, MIN_BY, MAX_BY, TOP_K, NTH_BY, RANK_BY, ENTRIES,
+} from "@ilokesto/queryable";
+
+const scores = createQueryable({
+  alice: { team: "a", score: 8 },
+  bob: { team: "a", score: 9 },
+  charlie: { team: "b", score: 9 },
+});
+scores[SORT_BY](
+  { select: user => user.team },
+  { select: user => user.score, direction: "desc" },
+)[ENTRIES](); // bob, alice, charlie
+scores[MIN_BY]({ select: user => user.score }); // alice's value
+scores[MAX_BY]({ select: user => user.score }); // bob's value (first tie)
+scores[TOP_K](2, { select: user => user.score, direction: "desc" })[ENTRIES]();
+// [["bob", ...], ["charlie", ...]]
+scores[NTH_BY](-1, { select: user => user.score }); // charlie's value
+scores[RANK_BY]("charlie", { select: user => user.score }); // 2
+```
+
+Every operation requires one or more `OrderRule<T>` objects with a `select(value, key)` callback and optional `direction: "asc" | "desc"` (default `"asc"`). Rules compare lexicographically. `OrderKey` is `boolean | number | bigint | string | null | undefined`. Ascending category order is **boolean, number, bigint, string, null, undefined**, with no coercion across categories. Within categories, `false < true`, numbers and bigints use numeric order, and strings use JavaScript UTF-16 lexical order (not locale collation). `NaN` follows all other numbers, including `Infinity`; all NaNs tie. `-0` and `0` tie. Descending reverses the whole key order, including nullish placement. Equal complete rule keys retain input order in either direction.
+
+`SORT_BY` and `TOP_K` return ordered `QuerySequence<T>` results, retaining original keys, including integer and special keys. `SORT_BY` computes every rule once per entry, even when an earlier rule already distinguishes entries. Cached keys exist only during that consumption, never across lazy consumptions. Eager calls run immediately; lazy chains defer until consumed, rescan their live query record, and rerun selectors. Eager results retain a shallow snapshot of entries. Source records and entry arrays are never sorted in place; nested values remain shared references. Exceptions propagate unchanged, at the same eager/deferred boundary as `SORT`. Existing comparator `SORT`, repeated `SORT`, and `SORT` + `LIMIT`/`FIRST` are not rewritten.
+
+`MIN_BY` and `MAX_BY` are immediate terminals, even on lazy chains. They scan once, retain only the best entry and its rule keys, and replace it only for a strict improvement. They return **values**, not entries; a first tied value wins for both extrema. Empty input returns `undefined`, which is indistinguishable from a selected undefined value; use `RANK_BY` to test an existing key's position or `TOP_K(...)[ENTRIES]()` when key/presence information matters. Directions apply to extrema too: a descending rule's minimum has the greatest natural key.
+
+`TOP_K(k, ...rules)` retains at most K candidates in a bounded heap, then stably sorts the winners; it is ordered even when K exceeds the input length. K must be a nonnegative safe integer; `NaN`, infinities, fractions, negative values, and unsafe integers throw `RangeError` at the operation call, before consuming even a lazy source. `-0` means zero. K=0 does not read upstream or call selectors. Positive K consumes the full upstream input before yielding winners, even if followed by `FIRST` or `LIMIT`.
+
+`NTH_BY(index, ...rules)` returns the value at a **zero-based stable ordinal** in the same ordering. Negative indexes count from the end (`-1` is last); empty or out-of-range positions return `undefined`. Indexes must be safe integers; invalid indexes throw `RangeError` before consuming. `RANK_BY(recordKey, ...rules)` returns that key's zero-based stable ordinal, or `undefined` if absent. Ties receive distinct consecutive positions according to input order, not competition/dense ranks. Both are immediate terminals and cache each selector once per entry per call.
+
+For N entries and R rules, `SORT_BY` uses O(NR) cached-key storage plus sorting; extrema use O(R) working storage. `TOP_K` uses O(min(K,N)R) retained keys and O(N log(min(K,N)) + min(K,N) log(min(K,N))) comparison work. `NTH_BY` uses an iterative heap of at most `index + 1` candidates for nonnegative indexes or `abs(index)` candidates for negative indexes; no recursive partitioning occurs. `RANK_BY` buffers O(NR) keys, locates the requested key, and counts preceding candidates without sorting. These are explicit selection operations, not automatic optimizations. See [ordering measurements](../bench/ORDERING.md) for K/N and selector-cost trade-offs; no speedup or heap threshold is promised.
