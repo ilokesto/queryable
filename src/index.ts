@@ -24,6 +24,15 @@ import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
 
+/** Eagerly group by arbitrary native Map key identity. */
+export const GROUP_BY_MAP = Symbol("group_by_map");
+/** Collect original keys and values in a fresh Map, preserving query order. */
+export const TO_MAP = Symbol("to_map");
+/** Collect distinct values in first-occurrence order using SameValueZero. */
+export const TO_SET = Symbol("to_set");
+/** Collect original string keys in query order. */
+export const KEYS = Symbol("keys");
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -95,6 +104,9 @@ interface Source<T> {
 }
 
 interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
+  [TO_MAP](this: Source<T>): Map<string, T>;
+  [TO_SET](this: Source<T>): Set<T>;
+  [KEYS](this: Source<T>): string[];
   /** Sum selected numbers in query order, starting at +0. */
   [SUM](this: Source<T>, selector: (value: T, key: string) => number): number;
   /** Average selected numbers; empty input returns undefined. */
@@ -150,6 +162,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
 }
 
 interface Operations<T, M extends Mode> extends Terminals<T> {
+  [GROUP_BY_MAP]<K>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Map<K, Result<T, M>>;
   /** Keep matching records with type guard narrowing.
    * @example query[WHERE]((value): value is string => typeof value === "string")
    */
@@ -332,6 +345,19 @@ function lookupEntry<T>(this: Source<T>, predicate: (value: T, key: string) => b
 }
 
 const terminals = {
+  [TO_MAP]<T>(this: Source<T>): Map<string, T> {
+    return new Map(this[ITERATE]());
+  },
+  [TO_SET]<T>(this: Source<T>): Set<T> {
+    const values = new Set<T>();
+    for (const [, value] of this[ITERATE]()) {
+      values.add(value);
+    }
+    return values;
+  },
+  [KEYS]<T>(this: Source<T>): string[] {
+    return Array.from(this[ITERATE](), ([key]) => key);
+  },
   [SUM]<T>(this: Source<T>, selector: (value: T, key: string) => number): number {
     return numericStats(this[ITERATE](), selector).sum;
   },
@@ -443,6 +469,19 @@ function takeWhile<T>(this: Queryable<T>, predicate: (value: T, key: string) => 
 
 const queryablePrototype = {
   ...terminals,
+  [GROUP_BY_MAP]<T, K>(this: Queryable<T>, keyFn: (value: T, key: string) => K): Map<K, Queryable<T>> {
+    const groups = new Map<K, Queryable<T>>();
+    for (const [key, value] of recordEntries(this)) {
+      const groupKey = keyFn(value, key);
+      let group = groups.get(groupKey);
+      if (group === undefined) {
+        group = createQueryable<T>({});
+        groups.set(groupKey, group);
+      }
+      group[key] = value;
+    }
+    return groups;
+  },
   [ITERATE]<T>(this: Queryable<T>): Iterable<Entry<T>> {
     return recordEntries(this);
   },
@@ -503,6 +542,24 @@ class Sequence<T> implements QuerySequence<T> {
 
   private next<U>(source: Iterable<Entry<U>>): Sequence<U> {
     return new Sequence(this.lazy ? source : Array.from(source), this.lazy);
+  }
+
+  [GROUP_BY_MAP]<K>(keyFn: (value: T, key: string) => K): Map<K, QuerySequence<T>> {
+    const entries = new Map<K, Entry<T>[]>();
+    for (const entry of this.source) {
+      const groupKey = keyFn(entry[1], entry[0]);
+      const group = entries.get(groupKey);
+      if (group === undefined) {
+        entries.set(groupKey, [entry]);
+      } else {
+        group.push(entry);
+      }
+    }
+    const groups = new Map<K, QuerySequence<T>>();
+    for (const [key, group] of entries) {
+      groups.set(key, new Sequence(group, false));
+    }
+    return groups;
   }
 
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
