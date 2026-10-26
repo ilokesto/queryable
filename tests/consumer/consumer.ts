@@ -1,11 +1,12 @@
 import {
+  MAP_CONCURRENT,
   BFS, DFS, GROUP_JOIN, INNER_JOIN, LEFT_JOIN,
   AT, COUNT_BY, EVERY, FALLBACK, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
   INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
   ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable,
   createRetryAsyncQuerySequence, iterateAsyncEntries,
 } from "@ilokesto/queryable";
-import type { Queryable, QuerySequence, TraversalContext, TraversalNode } from "@ilokesto/queryable";
+import type { ConcurrentMapOptions, Queryable, QuerySequence, TraversalContext, TraversalNode } from "@ilokesto/queryable";
 
 export type { Queryable, QuerySequence } from "@ilokesto/queryable";
 export * from "./predicate-types.js";
@@ -27,6 +28,15 @@ export const values: string[] = narrowed[VALUES].call(narrowed);
 export const asyncQuery = createAsyncQuerySequence(() => [["number", Promise.resolve(1)]]);
 export const asyncMapped = asyncQuery[MAP](async value => String(value));
 export const asyncValues: Promise<string[]> = asyncMapped[VALUES]();
+export const concurrentOptions: ConcurrentMapOptions = {
+  concurrency: 3, prefetch: 1, reorderBuffer: 2, ordered: false,
+};
+export const concurrentMapped = createAsyncQuerySequence(() => [["__proto__", 1], ["2", 2]])
+  [MAP_CONCURRENT](async (value, key, signal) => {
+    signal.throwIfAborted();
+    return `${key}:${value}`;
+  }, concurrentOptions);
+export const concurrentView: AsyncIterable<[string, string]> = iterateAsyncEntries(concurrentMapped);
 export const asyncView: AsyncIterable<[string, number]> = iterateAsyncEntries(asyncQuery);
 export const recoveredQuery = createAsyncQuerySequence<number>(() => { throw new Error("source"); })
   [FALLBACK]((error, signal) => {

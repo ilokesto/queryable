@@ -1060,6 +1060,87 @@ limited stage complete; a hook before it sees early return. No hook or source
 runs for an unused query or a downstream `LIMIT(0)`. All hook methods remain
 shared and frozen, with fresh execution state on each consumption.
 
+## Bounded concurrent async mapping
+
+`MAP_CONCURRENT(mapper, options)` explicitly overlaps async callbacks. Ordinary
+async `MAP` stays sequential. The new shared Symbol method returns another live,
+repeatable, nonmemoized `AsyncQuerySequence<Awaited<U>>`; every consumption owns
+its cursor, scheduler, and child controller.
+
+```ts
+import { createAsyncQuerySequence, ENTRIES, MAP_CONCURRENT } from "@ilokesto/queryable";
+
+const query = createAsyncQuerySequence(() => [["a", 1], ["b", 2]])
+  [MAP_CONCURRENT](async (value, originalKey, signal) => {
+    signal.throwIfAborted(); // also pass signal to cancellable external work
+    return `${originalKey}:${value * 2}`;
+  }, { concurrency: 4, prefetch: 2, reorderBuffer: 3 });
+await query[ENTRIES](); // [["a", "a:2"], ["b", "b:4"]]
+```
+
+`ConcurrentMapOptions` validates synchronously when constructing the stage and
+copies the options. `concurrency` is required and must be a positive safe integer.
+`prefetch` defaults to `1` and must be a positive safe integer. `reorderBuffer`
+defaults to `concurrency - 1` and must be a nonnegative safe integer.
+`ordered` defaults to `true` and must be a boolean. Fractions, `NaN`, infinities,
+unsafe integers, and values outside these ranges throw; no coercion occurs.
+
+The three budgets are independent:
+
+- At most `concurrency` callbacks are running.
+- Queued, unmapped inputs plus the one possible pending upstream `next()` occupy
+  at most `prefetch` slots. Upstream pulls are serialized, not concurrent.
+- Every running callback reserves a result slot before it starts. At most
+  `reorderBuffer + 1` callbacks have started but not emitted: one head/delivery
+  slot plus `reorderBuffer` slots. Therefore ordered results completed behind a
+  blocked head never exceed `reorderBuffer`. Including the head, or in unordered
+  mode, completed undelivered results never exceed `reorderBuffer + 1`.
+
+The scheduler owns at most `prefetch + reorderBuffer + 1` entry/pull slots.
+This is not a bound on bytes, external tasks, terminal output arrays, or other
+stages: the factory's duplicate-key checks retain keys, `"last"` buffers its
+source, and sorting/grouping retain their existing buffering contracts.
+Small reorder budgets intentionally leave workers idle under head-of-line
+blocking: `reorderBuffer: 0` permits only one mapper even with higher concurrency.
+Increasing the worker limit alone is not a memory limit or a throughput guarantee.
+Callbacks overlap asynchronous work; synchronous callbacks do not become CPU
+parallel. Readiness, not an awaited full window, drives emission, so a pending
+extra upstream pull cannot delay an already-ready result.
+
+Ordered mode emits in input order. Set `{ concurrency: 4, ordered: false }` for
+observed mapper-completion order; simultaneous settlements follow handler order.
+Both modes preserve original string keys, including integer-like and special
+keys, and stored `undefined`. They never renumber entries. Source duplicate-key
+policy still applies first. Empty input invokes no mapper and yields normal empty
+terminal results. `LIMIT(0)` never acquires the source.
+
+Callbacks start in input order and receive `(value, originalKey, signal)`. Their
+signal is a **per-consumption child signal**, not the optional signal configured
+on the factory. Configured abort forwards its reason to the child. Stopping that
+stage on early return, failure, or completion aborts the child without aborting
+the caller's controller. Existing upstream factories and ordinary callbacks keep
+receiving the original configured signal. Forward the child to external mapper
+work for cooperative cancellation; nothing forcibly stops work that ignores it.
+
+No new pulls or callbacks start without demand after the current bounded window,
+or after an observed failure, early result, or abort. Already-started work can
+settle while a consumer is paused. The first observed error wins immediately,
+even if a prior ordered item is pending; thrown values including `undefined`
+retain identity. Abandoned work and cleanup rejections remain observed. A failure
+while paused initiates upstream closure and is delivered on the next demand.
+
+An acquired upstream iterator gets at most one `return()` attempt unless it
+already exhausted. With a pending upstream pull, or on error/abort, the scheduler
+observes but does not await that return: early results do not wait for a
+non-cooperative pull or sibling mapper. Otherwise return cleanup is awaited and
+its failure rejects the consumer. A native upstream async generator can queue
+return behind its pending work, delaying its underlying cleanup and upstream
+`FINALIZE`; the configured signal may be needed to interrupt that upstream wait.
+The public async-generator views also serialize protocol calls: to interrupt a
+currently pending consumer `next()`, abort the configured signal rather than
+queueing `return()` behind it. Place awaited lifetime hooks downstream when their
+completion must precede terminal settlement. Prefetch can exhaust a short
+upstream, and run its `ON_COMPLETE`, before a downstream early result.
 ## Explicit async fallback and buffered retry
 
 `query[FALLBACK]((error, signal) => fallbackEntries, { duplicateKeys })` switches

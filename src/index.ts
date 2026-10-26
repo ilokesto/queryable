@@ -29,6 +29,8 @@ export { AVERAGE, COUNT_BY, MAX, MIN, REDUCE_BY, STATS, SUM } from "./aggregatio
 export type { NumericStats } from "./aggregation.js";
 export { FINALIZE, ON_COMPLETE } from "./lifetime.js";
 export type { ConsumptionOutcome } from "./lifetime.js";
+export { MAP_CONCURRENT } from "./concurrency.js";
+export type { ConcurrentMapOptions } from "./concurrency.js";
 export { FALLBACK, createRetryAsyncQuerySequence } from "./recovery.js";
 export type { AsyncFallbackFactory } from "./recovery.js";
 
