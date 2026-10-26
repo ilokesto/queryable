@@ -1,9 +1,9 @@
 import {
-  BFS, DFS,
-  AT, COUNT_BY, EVERY, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
-  GROUP_JOIN, INNER_JOIN, LEFT_JOIN,
+  BFS, DFS, GROUP_JOIN, INNER_JOIN, LEFT_JOIN,
+  AT, COUNT_BY, EVERY, FALLBACK, FINALIZE, FIND, FIND_ENTRY, FIRST_OR, FIRST_OR_ELSE, GROUP_BY, GROUP_BY_MAP,
   INCLUDES, IS_EMPTY, KEYS, LAST, LAZY, MAP, REDUCE, REDUCE_BY, SINGLE, SORT, STATS,
-  ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable, iterateAsyncEntries,
+  ON_COMPLETE, TO_MAP, TO_SET, VALUES, WHERE, createAsyncQuerySequence, createQueryable,
+  createRetryAsyncQuerySequence, iterateAsyncEntries,
 } from "@ilokesto/queryable";
 import type { Queryable, QuerySequence, TraversalContext, TraversalNode } from "@ilokesto/queryable";
 
@@ -28,6 +28,14 @@ export const asyncQuery = createAsyncQuerySequence(() => [["number", Promise.res
 export const asyncMapped = asyncQuery[MAP](async value => String(value));
 export const asyncValues: Promise<string[]> = asyncMapped[VALUES]();
 export const asyncView: AsyncIterable<[string, number]> = iterateAsyncEntries(asyncQuery);
+export const recoveredQuery = createAsyncQuerySequence<number>(() => { throw new Error("source"); })
+  [FALLBACK]((error, signal) => {
+    const failure: unknown = error;
+    void failure;
+    signal?.throwIfAborted();
+    return [["fallback", Promise.resolve("recovered")]];
+  }, { duplicateKeys: "first" });
+export const retriedQuery = createRetryAsyncQuerySequence(() => [["a", Promise.resolve(7)]] as const, 2);
 export const lifetimeQuery = createAsyncQuerySequence(
   signal => [["a", signal?.aborted ? 0 : 1]],
   { signal: new AbortController().signal },

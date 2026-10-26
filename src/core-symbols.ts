@@ -71,3 +71,6 @@ export const REDUCE = Symbol("reduce");
  * @example query[LAZY]()[WHERE](value => value.active)[LIMIT](5)[VALUES]()
  */
 export const LAZY = Symbol("lazy");
+
+/** Switch once to an explicit fallback after an upstream pull fails. */
+export const FALLBACK = Symbol("fallback");
