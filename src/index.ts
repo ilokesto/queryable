@@ -5,6 +5,12 @@ import {
 
 export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js";
 
+import { checkedEntries } from "./entries.js";
+import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+
+export { DuplicateKeyError } from "./entries.js";
+export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -228,7 +234,13 @@ function sortEntries<T>(source: Iterable<Entry<T>>, compareFn: (a: T, b: T) => n
 }
 
 function* pickEntries<T>(source: Iterable<Entry<T>>, keys: readonly string[]): Generator<Entry<T>> {
-  const entries = new Map(source);
+  const requested = new Set(keys);
+  const entries = new Map<string, T>();
+  for (const [key, value] of source) {
+    if (requested.has(key)) {
+      entries.set(key, value);
+    }
+  }
   for (const key of keys) {
     if (entries.has(key)) {
       // has() distinguishes a stored undefined from an absent record.
@@ -286,14 +298,22 @@ const terminals = {
     return false;
   },
   [COUNT]<T>(this: Source<T>): number {
+    const source = this[ITERATE]();
+    if (Array.isArray(source)) {
+      return source.length;
+    }
     let count = 0;
-    for (const _entry of this[ITERATE]()) {
+    for (const _entry of source) {
       count++;
     }
     return count;
   },
   [FIRST]<T>(this: Source<T>): T | undefined {
-    for (const [, value] of this[ITERATE]()) {
+    const source = this[ITERATE]();
+    if (Array.isArray(source)) {
+      return source[0]?.[1];
+    }
+    for (const [, value] of source) {
       return value;
     }
     return undefined;
@@ -470,4 +490,62 @@ export function createQueryable<T>(obj: Readonly<Record<string, T>>): Queryable<
     }
   }
   return instance;
+}
+
+/** Duplicate-key handling for factory-backed sequences. */
+export interface QuerySequenceOptions {
+  readonly duplicateKeys?: KeyCollisionPolicy;
+}
+
+/**
+ * Defer a repeatable entry factory until consumption, with explicit key identity.
+ * Each consumption calls the factory again; it must return a fresh iterator or repeatable iterable.
+ * @example
+ * const query = createQuerySequence(() => new Map([["a", 1]]).entries());
+ * query[VALUES](); // [1]
+ */
+export function createQuerySequence<T>(
+  factory: EntrySourceFactory<T>,
+  options: QuerySequenceOptions = {},
+): QuerySequence<T> {
+  const policy = options.duplicateKeys ?? "error";
+  switch (policy) {
+    case "error":
+    case "first":
+    case "last":
+      return new Sequence(defer(checkedEntries, factory, policy), true);
+    default: {
+      const unsupported: never = policy;
+      throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
+    }
+  }
+}
+
+function* entryView<T>(query: Source<T>): Generator<[string, T]> {
+  for (const [key, value] of query[ITERATE]()) {
+    yield [key, value];
+  }
+}
+
+function* valueView<T>(query: Source<T>): Generator<T> {
+  for (const [, value] of query[ITERATE]()) {
+    yield value;
+  }
+}
+
+/**
+ * Create a repeatable entry view without first materializing an array.
+ * Each yielded tuple is fresh; nested values remain shallow references.
+ * @example Array.from(iterateEntries(createQueryable({ a: 1 }))); // [["a", 1]]
+ */
+export function iterateEntries<T>(query: Queryable<T> | QuerySequence<T>): Iterable<[string, T]> {
+  return defer(entryView, query);
+}
+
+/**
+ * Create a repeatable value view without first materializing an array.
+ * @example Array.from(iterateValues(createQueryable({ a: 1 }))); // [1]
+ */
+export function iterateValues<T>(query: Queryable<T> | QuerySequence<T>): Iterable<T> {
+  return defer(valueView, query);
 }

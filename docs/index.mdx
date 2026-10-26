@@ -139,3 +139,48 @@ Use `SKIP(start)[LIMIT](length)` for a nonnegative window; there is no separate 
 On lazy queries, `SKIP(n)[FIRST]()` pulls at most `n + 1` entries and `TAKE_WHILE(predicate)[LIMIT](k)` stops after the required prefix without testing a later entry. `TAKE_LAST(n)` must finish upstream before yielding anything and stores at most `n` entries in a ring buffer for finite sizes. `DROP_LAST(n)` uses at most `n` buffered entries and needs `n + 1` upstream entries for its first output; early terminals can then stop it. Neither operation moves ahead of sorting, sequence `PICK`, or negative `LIMIT` barriers.
 
 `SKIP(Infinity)` and `DROP_LAST(Infinity)` consume upstream and return no entries; the latter stores none. `TAKE_LAST(Infinity)` consumes and buffers the entire input before returning all entries. Each consumption gets fresh counters, predicate state, and buffers, including after early termination or an error. Lazy callbacks and errors remain deferred, and mutations between consumptions remain visible.
+
+## Iterable sources and key identity
+
+`createQuerySequence(factory, options?)` creates a lazy sequence from a factory of
+`Iterable<readonly [string, T]>`. Construction does not call the factory. Each
+consumption calls it again: return a fresh iterator or a repeatable iterable, not
+the same exhausted generator. There is no result cache or automatic rewind.
+
+```ts
+import { createQuerySequence, iterateEntries, iterateValues } from "@ilokesto/queryable";
+
+const rows = new Map([["2", 20], ["1", 10]]);
+const query = createQuerySequence(() => rows.entries());
+const entries = iterateEntries(query); // no consumption yet
+[...entries]; // [["2", 20], ["1", 10]]
+rows.set("2", 30);
+[...iterateValues(query)]; // [30, 10]
+```
+
+`iterateEntries(query)` and `iterateValues(query)` accept records and sequences
+without first collecting an array. Each iterator is independent. Entry views
+return fresh mutable tuples; changing them does not change a buffered query.
+Values remain shallow references. A query itself has no ambiguous default
+iterator: choose entries or values explicitly.
+
+External entries must be two-element arrays with string keys. Values, including
+`undefined`, Symbols, and opaque objects, are not inspected. Malformed entries
+throw `TypeError` when pulled. Acquired generators close on early exit or a
+downstream error; `LIMIT(0)` does not acquire the source.
+
+The `duplicateKeys` option makes key collisions explicit:
+
+| Policy | Behavior |
+| --- | --- |
+| `"error"` (default) | Throw `DuplicateKeyError`, whose `key` identifies the repeated key, when that entry is pulled |
+| `"first"` | Keep the first value, including a stored `undefined`; later occurrences are skipped |
+| `"last"` | Consume the whole source before yielding; use the last value while keeping each key's first position |
+
+Every consumption creates fresh identity state. The streaming policies retain a
+set of observed keys; `"last"` buffers a map of all distinct keys. Prefix
+consumers validate only what they pull, not the unconsumed tail. Full consumers
+therefore reject duplicate keys by default instead of silently overwriting them.
+`PICK`, grouping, sorting, and collection outputs receive the same unique-key
+entries. This is also the identity boundary for future multi-source operations.
+`TO_OBJECT` still intentionally restores native object ordering for integer keys.
