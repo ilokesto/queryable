@@ -442,6 +442,212 @@ identity 상태는 매 소비마다 새로 만듭니다. streaming 정책은 관
 이 고유 키 경계를 사용하며, 이후 다중 원본 연산의 공통 identity 계약이 됩니다.
 `TO_OBJECT`는 계속 숫자 키에 네이티브 객체 열거 순서를 적용합니다.
 
+## 계층 탐색
+
+`query[BFS](children, resultKey, options?)`와
+`query[DFS](children, resultKey, options?)`는 즉시 평가 레코드에서도 항상
+지연·정렬 시퀀스 `QuerySequence<TraversalNode<T>>`를 반환합니다.
+두 selector는 `(value, context)`를 받습니다. children selector는 형제 순서의
+`Iterable<readonly [string, T]>`를 반환하며, 호출마다 새 iterator나 반복 가능한
+iterable을 제공해야 합니다. 지역 키는 전체 트리에서 고유할 필요가 없습니다.
+필수 결과 키 selector가 생성된 행의 출력 identity를 정하며 공통
+`duplicateKeys: "error" | "first" | "last"` 경계를 그대로 적용합니다.
+`"first"`로 출력에서 제외한 행도 자식을 확장하므로 충돌 정책은 가지치기가 아닙니다.
+
+```ts
+import { createQueryable, BFS, DFS, MAP, VALUES } from "@ilokesto/queryable";
+import type { TraversalContext } from "@ilokesto/queryable";
+
+interface Node {
+  name: string;
+  children: ReadonlyArray<readonly [string, Node]>;
+}
+const query = createQueryable<Node>({
+  root: {
+    name: "root",
+    children: [
+      ["left", { name: "left", children: [["leaf", { name: "leaf", children: [] }]] }],
+      ["right", { name: "right", children: [] }],
+    ],
+  },
+});
+const children = (node: Node) => node.children;
+const key = (_node: Node, context: TraversalContext<Node>) => JSON.stringify(context.path);
+query[BFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "right", "leaf"]
+query[DFS](children, key)[MAP](row => row.value.name)[VALUES]();
+// ["root", "left", "leaf", "right"]
+```
+
+각 행은 `value`와 selector에 전달한 문맥을 포함합니다. `key`는 원래 지역 입력 키,
+`root`는 원본 root 값, `rootKey`는 root 입력 키, `path`는 root 키를 포함한 지역 키
+경로이며 root의 `depth`는 0입니다. 출력 키를 바꿔도 이 문맥은 유지합니다.
+값과 root는 얕은 참조이며 identity를 추측하기 위해 payload를 검사하지 않습니다.
+`path`는 읽을 때마다 readonly 타입의 새 배열을 반환합니다. 내부에는 연결된 경로만
+저장하므로 요청하지 않은 전체 경로를 깊은 트리의 모든 노드에 복사하지 않습니다.
+모든 경로를 출력하면 이차 공간이 필요할 수 있습니다.
+
+BFS는 모든 root를 먼저 출력한 뒤 root·자식 iterable 순서대로 각 깊이를 탐색합니다.
+반복형 queue가 frontier의 자식 iterator를 보관합니다. DFS는 반복형 iterator stack으로
+전위 탐색하며 한 root의 자손을 끝낸 뒤 다음 root를 읽습니다. 활성 stack 크기는 깊이에
+비례합니다. 둘 다 재귀 호출이나 형제 순서 뒤집기를 사용하지 않습니다. BFS는 현재
+깊이가 유한해야 다음 깊이에 도달하고, DFS의 무한 가지는 이후 형제·root 탐색을 막습니다.
+
+`maxDepth`는 포함 경계이며 기본값은 `Infinity`입니다. 그 외에는 비음수 안전 정수만
+허용합니다. 잘못된 값은 iterator 획득 전 연산 생성 시점에 `RangeError`를 던집니다.
+0이면 root만 출력하며 경계 깊이의 노드는 children selector를 호출하지 않습니다.
+
+`visitIdentity`가 없으면 같은 참조라도 각 경로를 별도로 방문합니다. cycle은 유한한
+깊이 경계나 prefix 소비로 종료해야 합니다. `visitIdentity(value, context)`를 지정하면
+소비마다 모든 root에 걸친 새 SameValueZero Set을 만듭니다. 탐색 순서상 첫 identity를
+유지하며 이후 반복은 출력·자식 확장 모두 건너뜁니다. 참조 identity에는
+`visitIdentity: value => value`를, 도메인 identity에는 ID selector를 사용하세요.
+방문 identity와 출력 키 충돌은 별개의 정책입니다.
+
+연산 생성과 `LIMIT(0)`은 root를 획득하거나 selector를 실행하지 않습니다.
+노드를 먼저 출력한 뒤 자식을 선택하므로 prefix 소비의 마지막 노드는 확장하지 않습니다.
+조기 종료와 selector·자식 iterator·downstream 예외는 아직 획득 중인 탐색 iterator를
+모두 닫으며, 하나의 return이 실패해도 나머지를 시도합니다. 탐색 예외는 cleanup 예외보다
+우선하고, 정상적인 조기 종료 중 cleanup이 실패하면 첫 cleanup 예외를 전달합니다.
+자연 소진한 iterator의 `return()`은 호출하지 않습니다. 재소비마다 queue·stack·방문 상태·출력
+키 상태를 새로 만들고 live 원본을 다시 읽습니다. `"last"`는 첫 결과 전에 전체 탐색을
+버퍼링하므로 무한 탐색을 단축하지 못합니다.
+## 인덱스 조인
+
+`GROUP_JOIN(inner, outerKey, innerKey, project)`은 outer 키마다 결과를 하나씩
+유지합니다. `project(value, matches, outerKey)`의 matches는 새 배열이며
+readonly `[innerKey, innerValue]` 튜플을 담습니다. 일치하지 않으면 빈 배열입니다.
+레코드 receiver는 레코드를, 시퀀스 receiver는 시퀀스를 반환합니다.
+
+`INNER_JOIN`과 `LEFT_JOIN`은 같은 앞의 세 인자 다음에
+`project(value, match, outerKey)`와 선택적 `{ duplicateKeys }`를 받습니다.
+projection은 호출자가 정한 문자열 키의 **`[generatedKey, result]`를 반드시
+반환**하며, 결과는 순서 있는 시퀀스입니다. 일치 context는
+`{ matched: true, key: string, value: I }`입니다. LEFT_JOIN은 불일치 outer에
+`{ matched: false }`를 한 번 전달하므로 저장된 `undefined`와 부재를 구분합니다.
+INNER_JOIN은 불일치 outer를 출력하지 않습니다. 빈 outer에서는 결과가 없고
+outer selector와 projection도 호출하지 않습니다. selector는 각 소스의
+`(value, originalKey)`를 받으며 후속 콜백에는 명시적으로 생성한 키를 전달합니다.
+
+```ts
+import {
+  createQueryable, GROUP_JOIN, INNER_JOIN, LEFT_JOIN, LAZY, VALUES,
+} from "@ilokesto/queryable";
+
+const users = createQueryable({ alice: 1, bob: 2 });
+const orders = createQueryable({ first: { user: 1, total: 10 }, second: { user: 1, total: 20 } });
+users[GROUP_JOIN](orders, id => id, order => order.user,
+  (_id, matches) => matches.length)[VALUES](); // [2, 0]
+users[LAZY]()[INNER_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [`${key}/${match.key}`, match.value.total])[VALUES](); // [10, 20]
+users[LEFT_JOIN](orders, id => id, order => order.user,
+  (_id, match, key) => [match.matched ? `${key}/${match.key}` : key,
+    match.matched ? match.value.total : undefined])[VALUES](); // [10, 20, undefined]
+```
+
+조인 키는 native Map SameValueZero를 따릅니다. `NaN`끼리와 두 부호의 0이
+일치하며 객체와 Symbol은 문자열 변환 없이 identity로 비교합니다. SORT를 포함한
+outer 순서를 유지하고 각 outer 안에서는 inner 원본 순서로 출력합니다.
+생성 키는 `createQuerySequence`의 공통 identity 경계를 통과합니다. 기본
+`"error"`는 중복에서 예외를 던지고 `"first"`는 첫 값을 유지합니다.
+`"last"`는 생성 entry 전체를 버퍼링하여 각 키의 첫 위치에 마지막 값을 둡니다.
+특수 문자열 키도 일반 데이터이며 암묵적인 번호 생성이나 덮어쓰기는 없습니다.
+streaming 정책의 prefix 소비는 실제 읽은 생성 키까지만 검증합니다.
+
+소비마다 **inner 전체를 새 Map의 match 배열로 인덱싱**합니다. 메모리는
+O(inner 항목 수)와 고유 조인 키 bucket에 비례합니다. outer가 비어도 inner를
+끝까지 소비하고 항목마다 selector를 한 번 호출한 뒤 outer iterator를 획득합니다.
+읽은 outer 항목마다 selector를 한 번, GROUP_JOIN은 outer마다 projection을
+한 번, INNER_JOIN은 일치 pair마다, LEFT_JOIN은 pair 또는 불일치 outer마다
+한 번 호출합니다. GROUP_JOIN은 projection마다 match 튜플을 복사합니다.
+N:M에서는 출력이 outer 개수와 inner 개수의 곱까지 늘 수 있으며 즉시 평가
+결과는 출력 전체를 저장합니다. identity 검증도 생성 키를 보관하고 `"last"`는
+전체 결과를 저장합니다. 무한한 inner 원본에서는 결과를 출력할 수 없습니다.
+
+레코드와 즉시 정렬 receiver는 호출 즉시 실행하고 지연 receiver는 demand까지
+인덱싱과 콜백을 미룹니다. 지연 조인 뒤의 `LIMIT(0)`은 두 소스를 획득하지
+않습니다. 인덱싱 이후 streaming 정책은 outer 조기 종료를 지원하고 획득한
+iterator를 닫습니다. 소스와 콜백 예외는 그대로 전파하며 활성 iterator를
+닫습니다. 반복·교차 지연 소비는 독립적인 인덱스를 만들고 소스 변경을 읽습니다.
+즉시 평가 결과는 스냅샷입니다. GROUP_JOIN은 receiver 모드를 따르며 기존
+GROUP_BY의 즉시 평가 의미는 바꾸지 않습니다.
+## Selector 기반 집합
+
+`DIFFERENCE`, `INTERSECTION`, `UNION`은 우측 쿼리와 필수 selector 두 개를
+받습니다. `leftSelector(leftValue, originalKey)`와
+`rightSelector(rightValue, originalKey)`의 값 타입은 달라도 되지만 반환하는
+identity 타입은 같습니다. 비교는 JavaScript Set의 SameValueZero입니다.
+`NaN`끼리, 부호가 다른 0끼리는 같고 `undefined`도 정상 identity입니다.
+객체는 필드가 아니라 참조로 비교합니다. selector가 명시적으로 반환하지
+않으면 레코드 키는 membership identity가 아닙니다.
+
+| 연산 | 결과 |
+| --- | --- |
+| `[DIFFERENCE](right, leftSelector, rightSelector)` | 우측에 없는 identity별 첫 좌측 원본 entry |
+| `[INTERSECTION](right, leftSelector, rightSelector)` | 우측에 있는 identity별 첫 좌측 원본 entry |
+| `[UNION](right, leftSelector, rightSelector, options?)` | 좌측 다음 우측 순서로 identity별 첫 원본 entry; 값 타입은 `T \| U` |
+
+세 연산은 수학적 집합입니다. multiset이나 중복을 유지하는 membership 필터가
+아니므로 양측의 중복 identity가 결과 개수를 늘리지 않습니다. 첫 해당 entry의
+원래 키와 값 참조를 유지합니다. receiver 모드도 유지하여 레코드는 네이티브
+객체 키 순서의 레코드, 정렬·지연 시퀀스는 시퀀스를 반환합니다. 우측 쿼리의
+모드가 receiver의 실행 시점을 바꾸지는 않습니다.
+
+```ts
+import {
+  createQueryable, DIFFERENCE, INTERSECTION, UNION, ENTRIES,
+} from "@ilokesto/queryable";
+
+const left = createQueryable({
+  a: { id: 1, label: "first" },
+  b: { id: 1, label: "duplicate" },
+  c: { id: 2, label: "second" },
+});
+const right = createQueryable({ r: { code: 2 }, s: { code: 3 } });
+left[DIFFERENCE](right, row => row.id, row => row.code)[ENTRIES]();
+// [["a", { id: 1, label: "first" }]]
+left[INTERSECTION](right, row => row.id, row => row.code)[ENTRIES]();
+// [["c", { id: 2, label: "second" }]]
+left[UNION](right, row => row.id, row => row.code)[ENTRIES]();
+// a, c, s: 우측 { code: 3 }을 포함한 원본 값
+```
+
+`UNION`은 값 identity 중복을 먼저 제거한 다음 결과 레코드 키 충돌을 처리합니다.
+키가 달라도 identity가 같으면 하나만 남습니다. identity가 다르지만 키가 같으면
+`createQuerySequence`와 동일한 `options.duplicateKeys`의 `"error"`(기본값),
+`"first"`, `"last"` 정책을 적용합니다. 기본 충돌은 `DuplicateKeyError`를 던지고,
+`"first"`는 첫 값, `"last"`는 키의 첫 위치에서 마지막 값을 유지합니다.
+저장된 `undefined`도 정상 값입니다. 키 정책이 이미 identity 중복으로 제거한
+entry를 되살리지는 않으므로 서로 다른 identity도 키 정책으로 탈락할 수
+있습니다. `ENTRIES`, `TO_OBJECT`, `PICK`은 모두 같은 고유 키 결과를 받습니다.
+각 입력의 원본 키 정책은 집합 selector보다 먼저 실행됩니다.
+
+```ts
+const a = createQueryable({ shared: 1 });
+const b = createQueryable({ shared: 2 });
+// a[UNION](b, n => n, n => n); // 다른 identity가 "shared"를 공유하여 예외
+a[UNION](b, n => n, n => n, { duplicateKeys: "first" })[ENTRIES]();
+// [["shared", 1]]
+a[UNION](b, n => n, n => n, { duplicateKeys: "last" })[ENTRIES]();
+// [["shared", 2]]
+```
+
+`DIFFERENCE`와 `INTERSECTION`은 좌측을 읽기 전에 우측 전체를 membership Set으로
+버퍼링하며 좌측이 비어 있어도 같습니다. 우측은 유한해야 합니다. 이후 좌측을
+streaming하고 출력한 identity의 Set을 보관합니다. 실제 방문한 entry마다
+selector를 한 번 호출하며 우측 selector 전체 다음 좌측 selector 순서입니다.
+`UNION`은 좌측 다음 우측을 streaming하면서 방문한 entry마다 selector를 한 번
+호출하고 관찰한 identity Set을 유지합니다. 결과 키 정책 `"last"`는 추가로
+모든 후보 결과 키를 버퍼링한 뒤 첫 항목을 출력합니다.
+
+빈 입력은 해당하는 빈 집합 또는 남은 쪽의 고유 집합을 만들며 빈 쪽 selector는
+호출하지 않습니다. 즉시 평가 연산은 호출 시점, 지연 연산은 소비 시점에
+실행합니다. 지연 결과의 `LIMIT(0)`은 양측을 모두 읽지 않습니다. 조기 종단은
+좌측 membership 순회나 streaming 합집합을 멈추지만 우측 membership 또는
+`"last"` 키 버퍼링은 생략하지 않습니다. 조기 종료나 예외는 획득한 iterator를
+닫으며 오류는 그대로 전파합니다. 지연 소비마다 membership, identity, 키 상태를
+새로 만들고 메모이제이션하지 않습니다. 예외·조기 종료 뒤에도 같으며 살아 있는
+쿼리 레코드와 반복 가능한 원본 factory의 변경은 다음 소비에 반영됩니다.
 ## 함수형 조합
 
 소문자 adapter는 receiver를 유지하며 기존 Symbol 메서드를 호출합니다.
