@@ -44,6 +44,7 @@ export { DROP_LAST, DROP_WHILE, SKIP, TAKE_LAST, TAKE_WHILE } from "./bounds.js"
 
 import { checkedEntries } from "./entries.js";
 import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+import { defer, filterEntries, fuseMap, fuseWhere, mapEntries } from "./fusion.js";
 
 export { DuplicateKeyError } from "./entries.js";
 export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
@@ -312,35 +313,6 @@ function* recordEntries<T>(record: Readonly<Record<string, T>>): Generator<Entry
       // The enumerated own key exists; T itself may legitimately include undefined.
       yield [key, record[key] as T];
     }
-  }
-}
-
-// Store the shared generator and its arguments, rather than a closure per chain step.
-class Deferred<T, A extends unknown[]> implements Iterable<T> {
-  constructor(
-    private readonly generate: (...args: A) => Iterable<T>,
-    private readonly args: A,
-  ) {}
-  [Symbol.iterator](): Iterator<T> {
-    return this.generate(...this.args)[Symbol.iterator]();
-  }
-}
-
-function defer<T, A extends unknown[]>(generate: (...args: A) => Iterable<T>, ...args: A): Iterable<T> {
-  return new Deferred(generate, args);
-}
-
-function* filterEntries<T>(source: Iterable<Entry<T>>, predicate: (value: T, key: string) => boolean): Generator<Entry<T>> {
-  for (const entry of source) {
-    if (predicate(entry[1], entry[0])) {
-      yield entry;
-    }
-  }
-}
-
-function* mapEntries<T, U>(source: Iterable<Entry<T>>, fn: (value: T, key: string) => U): Generator<Entry<U>> {
-  for (const [key, value] of source) {
-    yield [key, fn(value, key)];
   }
 }
 
@@ -742,10 +714,10 @@ class Sequence<T> implements QuerySequence<T> {
   [WHERE]<S extends T>(predicate: (value: T, key: string) => value is S): QuerySequence<S>;
   [WHERE](predicate: (value: T, key: string) => boolean): QuerySequence<T>;
   [WHERE](predicate: (value: T, key: string) => boolean): Source<T> {
-    return this.next(defer(filterEntries, this.source, predicate));
+    return this.next(this.lazy ? fuseWhere(this.source, predicate) : defer(filterEntries, this.source, predicate));
   }
   [MAP]<U>(fn: (value: T, key: string) => U): QuerySequence<U> {
-    return this.next(defer(mapEntries, this.source, fn));
+    return this.next(this.lazy ? fuseMap(this.source, fn) : defer(mapEntries, this.source, fn));
   }
   [PARTITION]<S extends T>(predicate: (value: T, key: string) => value is S): [QuerySequence<S>, QuerySequence<T>];
   [PARTITION](predicate: (value: T, key: string) => boolean): [QuerySequence<T>, QuerySequence<T>];
