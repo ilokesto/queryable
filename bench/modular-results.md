@@ -80,8 +80,9 @@ This distinction matters: scanning a module and emitting its code are different.
 
 Native packed-ESM tests additionally use Node loader hooks to verify that an
 `operators`-first import loads only `functional.js` and `core-symbols.js`.
-The `symbols` entry reexports all 58 existing public Symbols from core and
-family definitions; native ESM loads those family modules but no root, async,
+At the measured baseline, the `symbols` entry reexported all 58 then-public
+Symbols; later families extend the same parity-tested boundary.
+Native ESM loads their family modules but no root, async,
 or functional module. It does not promise per-Symbol module loading.
 The existing `sideEffects: false` setting is unchanged and is not the evidence
 for either boundary.

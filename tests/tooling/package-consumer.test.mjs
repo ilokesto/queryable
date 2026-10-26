@@ -40,6 +40,16 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   await cp(path.join(root, 'tests/consumer'), consumer, { recursive: true });
   await writeFile(path.join(consumer, 'package.json'), '{"private":true,"type":"module"}\n');
 
+  for (const [title, file] of [['migration-example', 'docs-examples.ts'], ['family-example', 'family-examples.ts']]) {
+    const example = await readFile(path.join(consumer, file), 'utf8');
+    for (const document of ['docs/index.mdx', 'docs/index.ko.mdx']) {
+      const source = await readFile(path.join(root, document), 'utf8');
+      const fences = [...source.matchAll(new RegExp('^```ts title="' + title + '"\\r?\\n([\\s\\S]*?)^```$', 'gm'))];
+      assert.equal(fences.length, 1, `${document}: one executable ${title} module`);
+      assert.equal(fences[0][1], example, `${document}: shipped example matches packed consumer`);
+    }
+  }
+
   const packed = await packRelease(root, artifacts);
   await exec('tar', ['-xzf', path.join(artifacts, packed.file), '--strip-components=1', '-C', installed]);
   assert.equal(packed.manifest.version, '0.0.1');
@@ -53,7 +63,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     }
   }
 
-  const program = ts.createProgram(['consumer.ts', 'streams.ts', 'functional.ts', 'modules.ts', 'shape.ts'].map(file => path.join(consumer, file)), {
+  const program = ts.createProgram(['consumer.ts', 'streams.ts', 'functional.ts', 'modules.ts', 'shape.ts', 'docs-examples.ts', 'family-examples.ts'].map(file => path.join(consumer, file)), {
     ...options, rootDir: consumer, outDir: path.join(consumer, 'dist'),
   });
   assert.equal(ts.getPreEmitDiagnostics(program).length, 0, format(ts.getPreEmitDiagnostics(program)));
@@ -73,6 +83,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
     assert.equal(typeof streams.fromEventTarget, 'function');
   `], { cwd: consumer });
   await exec(process.execPath, ['dist/functional.js'], { cwd: consumer });
+  await exec(process.execPath, ['docs-examples-runtime.mjs'], { cwd: consumer, timeout: 10_000 });
   await exec(process.execPath, ['dist/modules.js'], { cwd: consumer });
   for (const entry of ['@ilokesto/queryable', '@ilokesto/queryable/operators', '@ilokesto/queryable/symbols']) {
     await exec(process.execPath, ['modules.mjs', entry], { cwd: consumer });
