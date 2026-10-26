@@ -1,3 +1,9 @@
+import { checkedEntries } from "./entries.js";
+import type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+
+export { DuplicateKeyError } from "./entries.js";
+export type { EntrySourceFactory, KeyCollisionPolicy } from "./entries.js";
+
 /** Filter records, preserving type guard narrowing.
  * @example query[WHERE](value => value.age >= 20)
  */
@@ -406,4 +412,62 @@ export function createQueryable<T>(obj: Readonly<Record<string, T>>): Queryable<
     }
   }
   return instance;
+}
+
+/** Duplicate-key handling for factory-backed sequences. */
+export interface QuerySequenceOptions {
+  readonly duplicateKeys?: KeyCollisionPolicy;
+}
+
+/**
+ * Defer a repeatable entry factory until consumption, with explicit key identity.
+ * Each consumption calls the factory again; it must return a fresh iterator or repeatable iterable.
+ * @example
+ * const query = createQuerySequence(() => new Map([["a", 1]]).entries());
+ * query[VALUES](); // [1]
+ */
+export function createQuerySequence<T>(
+  factory: EntrySourceFactory<T>,
+  options: QuerySequenceOptions = {},
+): QuerySequence<T> {
+  const policy = options.duplicateKeys ?? "error";
+  switch (policy) {
+    case "error":
+    case "first":
+    case "last":
+      return new Sequence(defer(checkedEntries, factory, policy), true);
+    default: {
+      const unsupported: never = policy;
+      throw new TypeError(`Unsupported duplicate key policy: ${String(unsupported)}`);
+    }
+  }
+}
+
+function* entryView<T>(query: Source<T>): Generator<[string, T]> {
+  for (const [key, value] of query[ITERATE]()) {
+    yield [key, value];
+  }
+}
+
+function* valueView<T>(query: Source<T>): Generator<T> {
+  for (const [, value] of query[ITERATE]()) {
+    yield value;
+  }
+}
+
+/**
+ * Create a repeatable entry view without first materializing an array.
+ * Each yielded tuple is fresh; nested values remain shallow references.
+ * @example Array.from(iterateEntries(createQueryable({ a: 1 }))); // [["a", 1]]
+ */
+export function iterateEntries<T>(query: Queryable<T> | QuerySequence<T>): Iterable<[string, T]> {
+  return defer(entryView, query);
+}
+
+/**
+ * Create a repeatable value view without first materializing an array.
+ * @example Array.from(iterateValues(createQueryable({ a: 1 }))); // [1]
+ */
+export function iterateValues<T>(query: Queryable<T> | QuerySequence<T>): Iterable<T> {
+  return defer(valueView, query);
 }
