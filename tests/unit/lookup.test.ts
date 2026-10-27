@@ -2,11 +2,11 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   AT, EVERY, FIND_ENTRY, FIRST, FIRST_OR, FIRST_OR_ELSE, INCLUDES, IS_EMPTY,
   LAST, LAZY, MAP, SINGLE, SORT, createQueryable,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 import {
   at, every, findEntry, firstOr, firstOrElse, includes, isEmpty, last, single,
-} from "./lookup.js";
+} from "../../src/lookup.js";
 
 describe.each(["record", "ordered", "lazy"] as const)("%s lookup contracts", mode => {
   function query<T>(record: Record<string, T>): Queryable<T> | QuerySequence<T> {

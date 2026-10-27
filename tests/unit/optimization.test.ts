@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COUNT, ENTRIES, FIRST, GROUP_BY, LAZY, LIMIT, MAP, PICK, SORT, WHERE, createQueryable,
-} from "./index.js";
+} from "../../src/index.js";
 
 describe("materialized terminal contracts", () => {
   it.each([undefined, 0, false, ""])(

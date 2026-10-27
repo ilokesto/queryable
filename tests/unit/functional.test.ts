@@ -3,8 +3,8 @@ import {
   ENTRIES, LAZY, LIMIT, MAP, PICK, SORT, VALUES, WHERE,
   compose, count, createQueryable, createQuerySequence, entries, find, first,
   lazy, limit, map, pick, pipe, reduce, some, sort, toObject, values, where,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 it("predicate adapters: Boolean and literal false -> match core narrowing in every mode", () => {
   const source = createQueryable<0 | false | "" | "yes" | null | undefined>({

@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, PICK, SOME, SORT,
   VALUES, WHERE, createQueryable, createQuerySequence, iterateValues,
-} from "./index.js";
-import type { QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { QuerySequence } from "../../src/index.js";
 
 describe("adjacent lazy stages", () => {
   it("WHERE/MAP: changing types and branching -> original keys and exact per-entry stage order", () => {

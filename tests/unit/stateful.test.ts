@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   EACH, ENTRIES, FIND, FIRST, LAZY, LIMIT, MAP, PARTITION, SCAN, SOME, SORT,
   TAP, THROUGH, VALUES, createQueryable,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 const modes = ["record", "ordered", "lazy"] as const;
 

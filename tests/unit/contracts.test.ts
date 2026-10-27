@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, PICK, REDUCE,
   SOME, SORT, TO_OBJECT, VALUES, WHERE, createQueryable,
-} from "./index.js";
-import type { QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { QuerySequence } from "../../src/index.js";
 
 const modes = ["record", "ordered", "lazy"] as const;
 type Mode = typeof modes[number];

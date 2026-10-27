@@ -37,7 +37,7 @@ test('packed package: ESM and downstream declarations -> executable imports and 
   const installed = path.join(consumer, 'node_modules/@ilokesto/queryable');
   await mkdir(artifacts);
   await mkdir(installed, { recursive: true });
-  await cp(path.join(root, 'tests/consumer'), consumer, { recursive: true });
+  await cp(path.join(root, 'tests/fixtures/consumer'), consumer, { recursive: true });
   await writeFile(path.join(consumer, 'package.json'), '{"private":true,"type":"module"}\n');
 
   const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));

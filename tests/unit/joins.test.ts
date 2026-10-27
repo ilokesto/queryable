@@ -3,8 +3,8 @@ import {
   DuplicateKeyError, ENTRIES, FIRST, GROUP_BY, GROUP_JOIN, INNER_JOIN, LAZY,
   LEFT_JOIN, LIMIT, MAP, SORT, TO_OBJECT, VALUES,
   createQueryable, createQuerySequence, iterateValues,
-} from "./index.js";
-import type { JoinEntry, JoinMatch, LeftJoinMatch, Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { JoinEntry, JoinMatch, LeftJoinMatch, Queryable, QuerySequence } from "../../src/index.js";
 
 describe("indexed joins", () => {
   it("GROUP_JOIN: zero, one and multiple matches -> one output per original outer key", () => {

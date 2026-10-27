@@ -4,10 +4,10 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   DuplicateKeyError, ENTRIES, FIRST, LIMIT, MAP, VALUES, createAsyncQuerySequence,
   iterateAsyncValues,
-} from "./index.js";
-import type { AsyncQuerySequence } from "./index.js";
-import { EventQueueOverflowError, fromEventEmitter, fromEventTarget, fromReadableStream } from "./streams.js";
-import type { EventEmitterSource } from "./streams.js";
+} from "../../src/index.js";
+import type { AsyncQuerySequence } from "../../src/index.js";
+import { EventQueueOverflowError, fromEventEmitter, fromEventTarget, fromReadableStream } from "../../src/streams.js";
+import type { EventEmitterSource } from "../../src/streams.js";
 
 function controlled<T>() {
   let resolve: ((value: T | PromiseLike<T>) => void) | undefined;

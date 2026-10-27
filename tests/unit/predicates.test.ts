@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   ENTRIES, FIND, GROUP_BY, GROUP_BY_PROP, LAZY, MAP, SORT, VALUES, WHERE,
   createQueryable, isDefined, isNonNullish, negate,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 type Mixed = false | true | 0 | 1 | "" | "cat" | null | undefined;
 

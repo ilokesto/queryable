@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   createQueryable, ENTRIES, LAZY, LIMIT, MAP, MAX_BY, MIN_BY, NTH_BY, RANK_BY,
   SORT, SORT_BY, TOP_K, VALUES,
-} from "./index.js";
-import type { OrderKey, OrderRule, OrderRules, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { OrderKey, OrderRule, OrderRules, QuerySequence } from "../../src/index.js";
 
 const ascending = { select: (value: number) => value } satisfies OrderRule<number>;
 

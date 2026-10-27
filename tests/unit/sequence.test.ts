@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, PICK, REDUCE,
   SOME, SORT, TO_OBJECT, VALUES, WHERE, createQueryable,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 describe("ordered sequences", () => {
   it("SORT: integer keys and ties -> stable order survives transformations", () => {

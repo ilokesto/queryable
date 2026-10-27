@@ -2,8 +2,8 @@ import { expectTypeOf, it } from "vitest";
 import {
   COUNT, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP, PICK, REDUCE,
   SOME, SORT, TO_OBJECT, VALUES, WHERE, createQueryable,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 it("WHERE and FIND: inferred guards and boolean predicates -> preserve narrowing by mode", () => {
   const record = createQueryable<string | number | undefined>({ a: "one", b: 2, c: undefined });

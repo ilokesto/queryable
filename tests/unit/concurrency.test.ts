@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   COUNT, ENTRIES, FINALIZE, FIRST, LAZY, LIMIT, MAP, MAP_CONCURRENT, SORT, VALUES, WHERE,
   createAsyncQuerySequence, iterateAsyncEntries,
-} from "./index.js";
-import type { AsyncQuerySequence, ConcurrentMapOptions } from "./index.js";
+} from "../../src/index.js";
+import type { AsyncQuerySequence, ConcurrentMapOptions } from "../../src/index.js";
 
 function controlled<T>() {
   let resolve: ((value: T | PromiseLike<T>) => void) | undefined;

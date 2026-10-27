@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   CONCAT, ZIP, FLAT_MAP, COUNT, DuplicateKeyError, ENTRIES, FIRST, LAZY, LIMIT, MAP, PICK,
   SORT, TO_OBJECT, VALUES, createQueryable, createQuerySequence, iterateEntries,
-} from "./index.js";
-import type { EntrySourceFactory, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { EntrySourceFactory, QuerySequence } from "../../src/index.js";
 
 function tracked<T>(
   name: string,
