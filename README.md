@@ -56,7 +56,6 @@ Use Node 24 (see `.nvmrc`) and pnpm 10.17.1 from this repository.
 pnpm typecheck
 pnpm test
 pnpm test:tooling
-pnpm migrate:verify
 pnpm docs:publication:verify
 pnpm docs:typecheck
 pnpm docs:build

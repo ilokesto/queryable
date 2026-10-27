@@ -21,7 +21,7 @@ sibling checkout paths.
   sibling workspace dependencies, an npm runtime alias, or documentation deployment.
 - Run from this repository with Node 24 (`.nvmrc`) and pnpm 10.17.1:
   `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm typecheck`,
-  `pnpm test`, `pnpm migrate:verify`, and the four `pnpm docs:*` quality
+  `pnpm test`, and the four `pnpm docs:*` quality
   commands.
 - `pnpm release:verify --sha <full-SHA>` is read-only. Main merges maintain a
   Changesets release PR; merging it publishes only the exact successful Verify

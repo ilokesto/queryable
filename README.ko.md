@@ -56,7 +56,6 @@ const names = users
 pnpm typecheck
 pnpm test
 pnpm test:tooling
-pnpm migrate:verify
 pnpm docs:publication:verify
 pnpm docs:typecheck
 pnpm docs:build
