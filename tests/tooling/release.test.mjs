@@ -64,11 +64,11 @@ async function releaseFixture(t, publishingEnabled = false) {
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const root = path.join(temporary, 'repo');
   await mkdir(path.join(root, 'dist'), { recursive: true });
-  await mkdir(path.join(root, '.release'));
+  await mkdir(path.join(root, '.github/release'), { recursive: true });
   await writeFile(path.join(root, 'dist/index.js'), 'export const value = 42;\n');
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ ...manifest, files: ['dist'],
     type: 'module', packageManager: 'pnpm@10.17.1', publishConfig: { access: 'public', tag: 'latest' } }));
-  await writeFile(path.join(root, '.release/policy.json'), JSON.stringify({ repository, distTag: 'latest', publishingEnabled }));
+  await writeFile(path.join(root, '.github/release/policy.json'), JSON.stringify({ repository, distTag: 'latest', publishingEnabled }));
   const env = { ...process.env, GIT_MASTER: '1', GIT_PAGER: 'cat', PAGER: 'cat',
     GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.test',
     GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.test' };
@@ -196,9 +196,9 @@ test('CI dispatch: main, PR, moving head, and foreign repository -> exact gate s
 });
 
 test('publisher policy: enabled automation outside Actions -> local publication rejected', async () => {
-  const policy = JSON.parse(await readFile(path.join(rootDir, '.release/policy.json'), 'utf8'));
+  const policy = JSON.parse(await readFile(path.join(rootDir, '.github/release/policy.json'), 'utf8'));
 
-  const result = spawnSync(process.execPath, ['scripts/publish-verified.mjs', sha], {
+  const result = spawnSync(process.execPath, ['.github/release/publish-verified.mjs', sha], {
     cwd: rootDir, encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'false' },
   });
 
