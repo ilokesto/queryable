@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   COUNT, DuplicateKeyError, ENTRIES, FIRST, GROUP_BY, LAZY, LIMIT, MAP, PICK,
   SORT, TO_OBJECT, VALUES, createQueryable, createQuerySequence, iterateEntries, iterateValues,
-} from "./index.js";
-import type { EntrySourceFactory, QuerySequence, QuerySequenceOptions } from "./index.js";
+} from "../../src/index.js";
+import type { EntrySourceFactory, QuerySequence, QuerySequenceOptions } from "../../src/index.js";
 
 describe("entry-source factories", () => {
   it("createQuerySequence: construction and repeat consumption -> defers and rereads the factory", () => {

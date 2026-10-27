@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   AVERAGE, COUNT_BY, GROUP_BY, LAZY, LIMIT, MAP, MAX, MIN, REDUCE_BY, SORT, STATS, SUM, VALUES,
   createQueryable,
-} from "./index.js";
-import type { NumericStats, Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { NumericStats, Queryable, QuerySequence } from "../../src/index.js";
 
 function inMode<T>(query: Queryable<T>, mode: string): Queryable<T> | QuerySequence<T> {
   if (mode === "lazy") {

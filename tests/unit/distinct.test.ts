@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   DISTINCT, DISTINCT_BY, DISTINCT_UNTIL_CHANGED, DISTINCT_UNTIL_CHANGED_BY,
   ENTRIES, FIRST, LAZY, LIMIT, MAP, SORT, VALUES, WHERE, createQueryable,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 const operations = [DISTINCT, DISTINCT_UNTIL_CHANGED] as const;
 const selectedOperations = [DISTINCT_BY, DISTINCT_UNTIL_CHANGED_BY] as const;

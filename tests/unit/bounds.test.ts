@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   DROP_LAST, DROP_WHILE, ENTRIES, FIRST, LAZY, LIMIT, MAP, PICK, SKIP, SORT,
   TAKE_LAST, TAKE_WHILE, VALUES, createQueryable,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 describe.each(["record", "ordered", "lazy"] as const)("%s bounds", mode => {
   function query<T>(record: Record<string, T>): QuerySequence<T> {

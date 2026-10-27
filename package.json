@@ -40,11 +40,13 @@
     "changeset": "changeset",
     "changeset:status": "changeset status",
     "version-packages": "changeset version && pnpm install --lockfile-only",
-    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json",
-    "test": "vitest run src",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build && pnpm test:unit && pnpm test:types && pnpm test:tooling",
     "test:tooling": "node --test tests/tooling/*.test.mjs",
     "bench": "pnpm build && node --expose-gc bench/benchmark.mjs --early-limit",
-    "release:verify": "node scripts/release-verify.mjs"
+    "release:verify": "node scripts/release-verify.mjs",
+    "test:unit": "vitest run tests/unit",
+    "test:types": "tsc --noEmit -p tests/tsconfig.json"
   },
   "repository": {
     "type": "git",

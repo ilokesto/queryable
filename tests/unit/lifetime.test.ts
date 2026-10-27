@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   COUNT, FINALIZE, FIND, FIRST, GROUP_BY, LIMIT, MAP, ON_COMPLETE, SOME,
   SORT, VALUES, WHERE, createAsyncQuerySequence, iterateAsyncEntries,
-} from "./index.js";
-import type { ConsumptionOutcome } from "./index.js";
+} from "../../src/index.js";
+import type { ConsumptionOutcome } from "../../src/index.js";
 
 function controlled<T>() {
   let resolve: ((value: T | PromiseLike<T>) => void) | undefined;

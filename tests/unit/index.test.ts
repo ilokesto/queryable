@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   COUNT, FIRST, GROUP_BY, LIMIT, MAP, PICK, SORT, TO_OBJECT, VALUES, WHERE,
   createQueryable,
-} from "./index.js";
-import type { Queryable } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable } from "../../src/index.js";
 
 const sample = {
   alice: { name: "Alice", age: 25, dept: "Engineering" },

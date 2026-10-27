@@ -111,12 +111,12 @@ pull is pending.
 
 ## Evidence and source comparison
 
-`src/concurrency.test.ts` uses controlled promises and exact start, completion,
+`tests/unit/concurrency.test.ts` uses controlled promises and exact start, completion,
 pull, and close events. It checks independent budgets, blocked heads,
 out-of-order readiness, paused consumers, pending extra pulls, early break,
 source and mapper failures, late rejections, abort reasons, shared methods,
 independent repeated consumption, original keys and existing sequential MAP.
-The packed fixture is imported by `tests/consumer/consumer.ts`, forwarded through
+The packed fixture is imported by `tests/fixtures/consumer/consumer.ts`, forwarded through
 the emitted declarations in `downstream.ts`, and actually executed by
 `runtime.mjs` through the existing `tests/tooling/package-consumer.test.mjs`.
 

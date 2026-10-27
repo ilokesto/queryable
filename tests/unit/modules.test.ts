@@ -1,15 +1,15 @@
 import { expect, expectTypeOf, it, vi } from "vitest";
-import type { Queryable, QuerySequence } from "./index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 it.each(["root", "symbols", "operators", "async"])(
   "module entries: %s imported first -> shared symbols and prototype methods",
   async first => {
     vi.resetModules();
     const load = {
-      root: () => import("./index.js"),
-      symbols: () => import("./symbols.js"),
-      operators: () => import("./functional.js"),
-      async: () => import("./async.js"),
+      root: () => import("../../src/index.js"),
+      symbols: () => import("../../src/symbols.js"),
+      operators: () => import("../../src/functional.js"),
+      async: () => import("../../src/async.js"),
     };
     if (first === "root") { await load.root(); }
     if (first === "symbols") { await load.symbols(); }
@@ -44,8 +44,8 @@ it.each(["root", "symbols", "operators", "async"])(
 );
 
 it("operator subpath types: truthy, false and guarded stages -> preserve root inference", async () => {
-  const { createQueryable } = await import("./index.js");
-  const { find, lazy, map, pipe, sort, values, where } = await import("./functional.js");
+  const { createQueryable } = await import("../../src/index.js");
+  const { find, lazy, map, pipe, sort, values, where } = await import("../../src/functional.js");
   const source = createQueryable<0 | false | "" | "yes" | null | undefined>({ a: 0, b: "yes" });
 
   const truthy = pipe(source, where(Boolean));

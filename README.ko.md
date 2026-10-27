@@ -51,8 +51,8 @@ upstream을 버퍼링할 수 있고 그룹화는 즉시 실행됩니다.
 
 ## 더 알아보기
 
-- [실행 가능한 이행 예제](./tests/consumer/migration-example.ts)
-- [연산 예제](./tests/consumer/family-examples.ts)
+- [실행 가능한 이행 예제](./tests/fixtures/consumer/migration-example.ts)
+- [연산 예제](./tests/fixtures/consumer/family-examples.ts)
 - [벤치마크 방법](./bench/README.md)과 [실측 결과](./bench/RESULTS.md)
 
 <details>
@@ -63,9 +63,10 @@ upstream을 버퍼링할 수 있고 그룹화는 즉시 실행됩니다.
 ```sh
 pnpm typecheck
 pnpm test
-pnpm test:tooling
 pnpm bench
 ```
+
+`pnpm test`는 한 번 빌드한 뒤 `test:unit`, `test:types`, `test:tooling`을 실행합니다. 런타임 테스트는 `tests/unit`, 컴파일 설정은 `tests/tsconfig.json`, 패키지 소비자 픽스처는 `tests/fixtures/consumer`에 있습니다.
 
 main 머지는 Changesets 릴리스 PR을 생성·갱신합니다. 해당 PR을 머지하면 성공한 Verify의 정확한 산출물만 배포하며, 로컬 배포는 금지합니다. 조직 공용 `NPM_TOKEN`에 이 저장소의 접근 권한을 설정하세요. 벤치마크는 정확성 판정이 아닌 측정이며, Remeda는 비교용 개발 의존성입니다.
 

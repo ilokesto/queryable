@@ -13,12 +13,13 @@ sibling checkout paths.
 - Groups materialize eagerly; sorting, sequence PICK, and finite negative LIMIT need buffering.
 - Keep benchmarks separate from correctness tests; never assert timing or heap thresholds.
 - Maintain installation, basic usage, and limitations in `README.md` and
-  `README.ko.md`. Keep executable consumer examples under `tests/consumer`.
+  `README.ko.md`. Keep executable consumer examples under `tests/fixtures/consumer`.
 - There is no official documentation website. Do not add sibling workspace
   dependencies or documentation deployment.
 - Run from this repository with Node 24 (`.nvmrc`) and pnpm 10.17.1:
-  `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm typecheck`,
-  `pnpm test`, and `pnpm test:tooling`.
+  `pnpm install --frozen-lockfile`, `pnpm typecheck`, and `pnpm test`.
+- `pnpm test` builds and runs `test:unit`, `test:types`, and `test:tooling` once.
+  Runtime tests live under `tests/unit`; test compiler settings are in `tests/tsconfig.json`.
 - `pnpm release:verify --sha <full-SHA>` is read-only. Main merges maintain a
   Changesets release PR; merging it publishes only the exact successful Verify
   artifact through GitHub Actions. Never publish locally.

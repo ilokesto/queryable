@@ -3,8 +3,8 @@ import {
   COUNT, DuplicateKeyError, ENTRIES, FIND, FIRST, GROUP_BY, LAZY, LIMIT, MAP,
   SOME, SORT, VALUES, WHERE, createAsyncQuerySequence, createQueryable,
   iterateAsyncEntries, iterateAsyncValues,
-} from "./index.js";
-import type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "./index.js";
+} from "../../src/index.js";
+import type { AsyncEntrySourceFactory, AsyncQuerySequence, AsyncQuerySequenceOptions } from "../../src/index.js";
 
 function controlled<T>() {
   let resolve: ((value: T | PromiseLike<T>) => void) | undefined;

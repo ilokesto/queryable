@@ -3,8 +3,8 @@ import {
   CHUNK, WINDOW, PAIRWISE, SPLIT, PARTITION_BY, ENTRIES, FIRST, GROUP_BY,
   LAZY, LIMIT, MAP, SORT, TO_OBJECT, VALUES,
   createQueryable, createQuerySequence, iterateValues,
-} from "./index.js";
-import type { EntryBuffer, EntryPair, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { EntryBuffer, EntryPair, QuerySequence } from "../../src/index.js";
 
 describe("entry buffers", () => {
   it.each([false, true])("CHUNK: eager/lazy %s with tail -> original anchors and partial chunk", lazy => {

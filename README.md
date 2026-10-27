@@ -51,8 +51,8 @@ and release resources in iterator cleanup.
 
 ## Further reading
 
-- [Executable migration example](./tests/consumer/migration-example.ts)
-- [Operation examples](./tests/consumer/family-examples.ts)
+- [Executable migration example](./tests/fixtures/consumer/migration-example.ts)
+- [Operation examples](./tests/fixtures/consumer/family-examples.ts)
 - [Benchmark methodology](./bench/README.md) and [measured results](./bench/RESULTS.md)
 
 <details>
@@ -63,9 +63,10 @@ Use Node 24 (see `.nvmrc`) and pnpm 10.17.1 from this repository.
 ```sh
 pnpm typecheck
 pnpm test
-pnpm test:tooling
 pnpm bench
 ```
+
+`pnpm test` builds once and runs `test:unit`, `test:types`, and `test:tooling`. Runtime tests live in `tests/unit`, compiler checks use `tests/tsconfig.json`, and packed-consumer fixtures live in `tests/fixtures/consumer`.
 
 Main merges maintain a Changesets release PR. Merging that PR publishes only the exact successful Verify artifact; local publishing is forbidden. Configure the shared organization `NPM_TOKEN` with access to this repository. Benchmarks are measurements, not correctness gates; Remeda is a development-only comparison dependency.
 

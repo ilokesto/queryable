@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   BFS, COUNT, DFS, DuplicateKeyError, ENTRIES, FIRST, LAZY, LIMIT, MAP,
   SORT, VALUES, createQueryable, createQuerySequence, iterateValues,
-} from "./index.js";
-import type { QuerySequence, TraversalContext, TraversalNode } from "./index.js";
+} from "../../src/index.js";
+import type { QuerySequence, TraversalContext, TraversalNode } from "../../src/index.js";
 
 interface Tree {
   readonly id: string;

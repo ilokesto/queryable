@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   COUNT, ENTRIES, FIRST, MAP, PICK, TO_OBJECT, VALUES, WHERE,
   createQueryable, createShapeQueryable,
-} from "./index.js";
-import type { ShapeEntry, ShapeQueryable } from "./index.js";
+} from "../../src/index.js";
+import type { ShapeEntry, ShapeQueryable } from "../../src/index.js";
 
 describe("shape snapshots", () => {
   it("construction: structurally hidden keys -> copies only the explicit domain", () => {

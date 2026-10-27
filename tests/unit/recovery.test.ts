@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   DuplicateKeyError, ENTRIES, FALLBACK, FINALIZE, FIND, FIRST, LIMIT, MAP, ON_COMPLETE, VALUES,
   createAsyncQuerySequence, createRetryAsyncQuerySequence, iterateAsyncEntries, iterateAsyncValues,
-} from "./index.js";
-import type { AsyncQuerySequence, ConsumptionOutcome } from "./index.js";
+} from "../../src/index.js";
+import type { AsyncQuerySequence, ConsumptionOutcome } from "../../src/index.js";
 
 function controlled<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

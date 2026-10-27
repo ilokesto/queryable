@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   DIFFERENCE, DuplicateKeyError, ENTRIES, FIRST, INTERSECTION, LAZY, LIMIT,
   MAP, PICK, SORT, TO_OBJECT, UNION, VALUES, createQueryable, createQuerySequence, iterateEntries,
-} from "./index.js";
-import type { Queryable, QuerySequence } from "./index.js";
+} from "../../src/index.js";
+import type { Queryable, QuerySequence } from "../../src/index.js";
 
 const identity = <T>(value: T): T => value;
 
