@@ -4,7 +4,7 @@ import {
   functionalNames, firstLive, secondLive, liveCalls, bufferedPrefix,
   barrierVisits, eagerGroupCalls, highGroup, shapeObject, shapeEntries,
   shapeFrozen, cancelMigration,
-} from './dist/docs-examples.js';
+} from './dist/migration-example.js';
 
 assert.deepEqual(originalEntries, [['2', 2], ['10', 10], ['__proto__', 3], ['constructor', 4]]);
 assert.deepEqual(selectedEntries, [['2', 2], ['10', 10], ['__proto__', 3]]);

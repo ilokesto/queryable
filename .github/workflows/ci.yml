@@ -92,12 +92,6 @@ jobs:
           pnpm typecheck
           pnpm test
           pnpm test:tooling
-      - name: Documentation checks
-        run: |
-          pnpm docs:publication:verify
-          pnpm docs:typecheck
-          pnpm docs:build
-          pnpm docs:test
       - name: Package exact verified head
         run: node scripts/release-artifact.mjs "$VERIFIED_SHA"
         env:

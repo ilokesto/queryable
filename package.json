@@ -44,14 +44,7 @@
     "test": "vitest run src",
     "test:tooling": "node --test tests/tooling/*.test.mjs",
     "bench": "pnpm build && node --expose-gc bench/benchmark.mjs --early-limit",
-        "release:verify": "node scripts/release-verify.mjs",
-    "docs:prepare": "pnpm build && pnpm --dir website exec fumadocs-mdx",
-    "docs:build": "pnpm docs:prepare && pnpm --dir website build",
-    "docs:typecheck": "pnpm docs:prepare && pnpm --dir website typecheck",
-    "docs:test": "pnpm --dir website test",
-    "docs:start": "pnpm --dir website start",
-    "docs:http": "node scripts/docs-http.mjs",
-    "docs:publication:verify": "node scripts/docs-publication.mjs verify"
+    "release:verify": "node scripts/release-verify.mjs"
   },
   "repository": {
     "type": "git",

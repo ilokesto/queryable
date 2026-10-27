@@ -4,7 +4,7 @@ Query records with shared Symbol methods, ordered sequences, and optional lazy e
 
 ![Public npm target](https://img.shields.io/badge/status-public_npm_target-555?style=flat)
 
-[Docs](./docs/index.mdx) | [API](./docs/index.mdx#operations) | [한국어](./README.ko.md)
+[한국어](./README.ko.md)
 
 - **Composable queries** for filtering, sorting, mapping, and grouping.
 - **Explicit ordering** with sequences that preserve comparator order.
@@ -12,7 +12,7 @@ Query records with shared Symbol methods, ordered sequences, and optional lazy e
 
 ## Local setup
 
-**Public npm release target, version 0.0.1.** Run inside this repository; cross-repository workspace links are unsupported. The local documentation site covers `next` only.
+Run inside this repository; cross-repository workspace links are unsupported.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -40,11 +40,19 @@ const names = users
 
 `PICK` selects record keys, not fields inside values. After `SORT`, use `VALUES` or `ENTRIES` to preserve order. Lazy views rerun on each consumption; values remain shallow references.
 
+Records use native object key order. `LAZY` reads the constructed query record
+again on each consumption without memoization. Sorting and finite negative limits
+may buffer the upstream; grouping materializes immediately.
+
+Use `createShapeQueryable(input, whitelist)` for shallow readonly snapshots of
+selected own enumerable keys. For async sources, provide a fresh iterator per
+consumption to `createAsyncQuerySequence`, forward its signal to external work,
+and release resources in iterator cleanup.
+
 ## Further reading
 
-- [Operations and contracts](./docs/index.mdx#operations)
-- [Ordering and migration](./docs/index.mdx#records-ordering-and-migration)
-- [Lazy evaluation](./docs/index.mdx#lazy-evaluation-and-short-circuiting)
+- [Executable migration example](./tests/consumer/migration-example.ts)
+- [Operation examples](./tests/consumer/family-examples.ts)
 - [Benchmark methodology](./bench/README.md) and [measured results](./bench/RESULTS.md)
 
 <details>
@@ -56,10 +64,6 @@ Use Node 24 (see `.nvmrc`) and pnpm 10.17.1 from this repository.
 pnpm typecheck
 pnpm test
 pnpm test:tooling
-pnpm docs:publication:verify
-pnpm docs:typecheck
-pnpm docs:build
-pnpm docs:test
 pnpm bench
 ```
 

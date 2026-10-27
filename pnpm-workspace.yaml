@@ -1,5 +1,4 @@
 packages:
   - .
-  - website
 
 linkWorkspacePackages: false
