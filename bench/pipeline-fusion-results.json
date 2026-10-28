@@ -1,0 +1,1275 @@
+{
+  "measuredAt": "2026-10-28T02:45:59.976Z",
+  "runtime": {
+    "node": "v24.22.1",
+    "v8": "13.6.233.17-node.58"
+  },
+  "machine": {
+    "platform": "darwin",
+    "release": "27.2.0",
+    "arch": "arm64",
+    "cpu": "Apple M4 Pro"
+  },
+  "modules": {
+    "before": "file:///Users/ayden/Documents/ilokesto/queryable/dist/index.js",
+    "after": "file:///Users/ayden/Documents/ilokesto/queryable-perf/dist/index.js"
+  },
+  "options": {
+    "rows": 2000,
+    "iterations": 20,
+    "rounds": 5,
+    "warmups": 3
+  },
+  "semantics": "Lazy conversion, stage creation and traversal included; source construction excluded. Mixed chains alternate MAP/WHERE and reject row0. Costly MAP applies 32 integer hash rounds. Prefix collects five outputs.",
+  "methodology": "Two independent before/after pairs in reversed implementation order. Fresh sequential child per case and implementation. Explicit GC outside timers. Separate retained-result heap pass; not transient allocation or peak memory.",
+  "results": [
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "map/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        8.053042000000005,
+        6.780875000000002,
+        7.597166000000001,
+        6.724792000000008,
+        7.546333000000004
+      ],
+      "medianBatchMs": 7.546333000000004,
+      "retainedHeapSamplesBytes": [
+        344232,
+        360192,
+        354936,
+        361280,
+        344424
+      ],
+      "medianRetainedHeapBytes": 354936
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "map/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        7.631333999999995,
+        6.829875000000001,
+        6.949750000000002,
+        6.562541999999993,
+        7.181708
+      ],
+      "medianBatchMs": 6.949750000000002,
+      "retainedHeapSamplesBytes": [
+        349824,
+        357888,
+        358080,
+        357592,
+        357776
+      ],
+      "medianRetainedHeapBytes": 357776
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "map/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 11439804250,
+      "timingSamplesMs": [
+        33.64512499999998,
+        33.35570799999999,
+        33.80820800000001,
+        33.31925000000001,
+        33.263417000000004
+      ],
+      "medianBatchMs": 33.35570799999999,
+      "retainedHeapSamplesBytes": [
+        349696,
+        355744,
+        366456,
+        355712,
+        355992
+      ],
+      "medianRetainedHeapBytes": 355744
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "map/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 11439804250,
+      "timingSamplesMs": [
+        32.608750000000015,
+        32.68950000000001,
+        32.57137500000002,
+        32.450958000000014,
+        32.47979200000003
+      ],
+      "medianBatchMs": 32.57137500000002,
+      "retainedHeapSamplesBytes": [
+        349744,
+        355472,
+        366184,
+        355440,
+        355672
+      ],
+      "medianRetainedHeapBytes": 355472
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "mixed/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        7.990333,
+        6.058083000000003,
+        7.423082999999998,
+        6.411041999999995,
+        7.241292000000001
+      ],
+      "medianBatchMs": 7.241292000000001,
+      "retainedHeapSamplesBytes": [
+        344232,
+        360192,
+        346192,
+        361232,
+        344472
+      ],
+      "medianRetainedHeapBytes": 346192
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "mixed/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        7.367000000000004,
+        6.442292000000002,
+        6.488666000000002,
+        6.206249999999997,
+        6.506
+      ],
+      "medianBatchMs": 6.488666000000002,
+      "retainedHeapSamplesBytes": [
+        349872,
+        356704,
+        349336,
+        357592,
+        357776
+      ],
+      "medianRetainedHeapBytes": 356704
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "mixed/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 16225959780,
+      "timingSamplesMs": [
+        19.77449999999999,
+        19.578125000000014,
+        19.398500000000013,
+        19.597082999999998,
+        19.679584000000006
+      ],
+      "medianBatchMs": 19.597082999999998,
+      "retainedHeapSamplesBytes": [
+        349696,
+        355744,
+        357760,
+        355760,
+        355944
+      ],
+      "medianRetainedHeapBytes": 355760
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "mixed/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 16225959780,
+      "timingSamplesMs": [
+        18.72270900000001,
+        18.895542000000006,
+        18.70212500000001,
+        18.682249999999982,
+        18.728999999999985
+      ],
+      "medianBatchMs": 18.72270900000001,
+      "retainedHeapSamplesBytes": [
+        349696,
+        355472,
+        357440,
+        355440,
+        357776
+      ],
+      "medianRetainedHeapBytes": 355472
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "mixed/cheap/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/prefix",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 150,
+      "timingSamplesMs": [
+        0.6348749999999974,
+        0.5844160000000009,
+        0.6281250000000007,
+        0.6049160000000029,
+        0.741416000000001
+      ],
+      "medianBatchMs": 0.6281250000000007,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        14088
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "mixed/cheap/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/prefix",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 150,
+      "timingSamplesMs": [
+        0.6425829999999983,
+        0.799707999999999,
+        0.8030420000000014,
+        0.6002919999999996,
+        0.6029160000000005
+      ],
+      "medianBatchMs": 0.6425829999999983,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        14088
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "mixed/costly/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/prefix",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 24210073530,
+      "timingSamplesMs": [
+        0.8817500000000003,
+        0.7590409999999999,
+        0.6390419999999999,
+        0.6266670000000012,
+        0.8214169999999967
+      ],
+      "medianBatchMs": 0.7590409999999999,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        4872
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "mixed/costly/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/prefix",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 24210073530,
+      "timingSamplesMs": [
+        0.7046659999999996,
+        0.6649589999999996,
+        0.6690000000000005,
+        0.7932500000000005,
+        0.625791999999997
+      ],
+      "medianBatchMs": 0.6690000000000005,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        14088
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "small/depth-0",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-0",
+        "depth": 0,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 0,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.47012499999999946,
+        0.4715000000000025,
+        0.694625000000002,
+        0.6773339999999983,
+        0.7074169999999995
+      ],
+      "medianBatchMs": 0.6773339999999983,
+      "retainedHeapSamplesBytes": [
+        159960,
+        163120,
+        168184,
+        161040,
+        154864
+      ],
+      "medianRetainedHeapBytes": 161040
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "small/depth-0",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-0",
+        "depth": 0,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 0,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.48216700000000046,
+        0.7367919999999977,
+        0.6103339999999982,
+        0.662583999999999,
+        0.5245000000000033
+      ],
+      "medianBatchMs": 0.6103339999999982,
+      "retainedHeapSamplesBytes": [
+        154960,
+        154632,
+        166440,
+        165520,
+        163776
+      ],
+      "medianRetainedHeapBytes": 163776
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "case": "small/depth-1",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-1",
+        "depth": 1,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 1,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.7511249999999983,
+        0.7566670000000002,
+        0.8678339999999984,
+        0.6566250000000018,
+        0.6617919999999984
+      ],
+      "medianBatchMs": 0.7511249999999983,
+      "retainedHeapSamplesBytes": [
+        122528,
+        165176,
+        167792,
+        161136,
+        168496
+      ],
+      "medianRetainedHeapBytes": 165176
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "case": "small/depth-1",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-1",
+        "depth": 1,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 1,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.9118749999999984,
+        0.7040840000000017,
+        0.7623750000000022,
+        0.7984170000000006,
+        0.6133750000000049
+      ],
+      "medianBatchMs": 0.7623750000000022,
+      "retainedHeapSamplesBytes": [
+        159960,
+        123096,
+        165496,
+        165368,
+        169152
+      ],
+      "medianRetainedHeapBytes": 165368
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "map/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        7.608250000000005,
+        6.745500000000007,
+        6.561083000000011,
+        6.538750000000007,
+        6.955541000000011
+      ],
+      "medianBatchMs": 6.745500000000007,
+      "retainedHeapSamplesBytes": [
+        349824,
+        356752,
+        358080,
+        357592,
+        357776
+      ],
+      "medianRetainedHeapBytes": 357592
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "map/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        8.356917000000003,
+        6.684334,
+        7.667625000000001,
+        6.529167000000001,
+        7.673209
+      ],
+      "medianBatchMs": 7.667625000000001,
+      "retainedHeapSamplesBytes": [
+        344232,
+        361280,
+        354936,
+        361232,
+        344472
+      ],
+      "medianRetainedHeapBytes": 354936
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "map/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 11439804250,
+      "timingSamplesMs": [
+        32.738541,
+        32.60808400000002,
+        32.56370899999999,
+        32.66433299999997,
+        32.268958000000055
+      ],
+      "medianBatchMs": 32.60808400000002,
+      "retainedHeapSamplesBytes": [
+        349752,
+        354456,
+        366184,
+        355440,
+        355672
+      ],
+      "medianRetainedHeapBytes": 355440
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "map/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "map/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 32000,
+        "where": 0
+      },
+      "outputLength": 2000,
+      "checksum": 11439804250,
+      "timingSamplesMs": [
+        33.43445799999998,
+        33.56637500000002,
+        33.40412499999999,
+        33.289083999999974,
+        33.113999999999976
+      ],
+      "medianBatchMs": 33.40412499999999,
+      "retainedHeapSamplesBytes": [
+        349696,
+        355744,
+        366456,
+        355712,
+        355944
+      ],
+      "medianRetainedHeapBytes": 355744
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "mixed/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        7.0384579999999985,
+        6.441749999999999,
+        6.464374999999997,
+        6.02825,
+        6.450374999999994
+      ],
+      "medianBatchMs": 6.450374999999994,
+      "retainedHeapSamplesBytes": [
+        349824,
+        356704,
+        349336,
+        357544,
+        357776
+      ],
+      "medianRetainedHeapBytes": 356704
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "mixed/cheap/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/full",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 19990000,
+      "timingSamplesMs": [
+        7.967832999999999,
+        6.523874999999997,
+        8.225875000000002,
+        6.629666999999998,
+        8.042792000000006
+      ],
+      "medianBatchMs": 7.967832999999999,
+      "retainedHeapSamplesBytes": [
+        344232,
+        360192,
+        346192,
+        361232,
+        344424
+      ],
+      "medianRetainedHeapBytes": 346192
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "mixed/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 16225959780,
+      "timingSamplesMs": [
+        19.164208000000002,
+        18.821959000000007,
+        18.619957999999997,
+        18.38329200000001,
+        18.724333
+      ],
+      "medianBatchMs": 18.724333,
+      "retainedHeapSamplesBytes": [
+        349696,
+        355472,
+        357440,
+        355440,
+        355672
+      ],
+      "medianRetainedHeapBytes": 355472
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "mixed/costly/full",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/full",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 15993,
+        "where": 15993
+      },
+      "outputLength": 1999,
+      "checksum": 16225959780,
+      "timingSamplesMs": [
+        19.867209000000003,
+        20.191874999999996,
+        19.736208000000005,
+        19.31729100000001,
+        19.768542000000025
+      ],
+      "medianBatchMs": 19.768542000000025,
+      "retainedHeapSamplesBytes": [
+        349696,
+        355744,
+        357760,
+        355760,
+        355944
+      ],
+      "medianRetainedHeapBytes": 355760
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "mixed/cheap/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/prefix",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 150,
+      "timingSamplesMs": [
+        0.8154170000000001,
+        0.5740000000000016,
+        0.6184159999999999,
+        0.7743749999999991,
+        0.5865420000000015
+      ],
+      "medianBatchMs": 0.6184159999999999,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        14088
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "mixed/cheap/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/cheap/prefix",
+        "depth": 16,
+        "cost": 0,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 150,
+      "timingSamplesMs": [
+        0.6304580000000009,
+        0.7509170000000012,
+        0.7956660000000007,
+        0.760666999999998,
+        0.604416999999998
+      ],
+      "medianBatchMs": 0.7509170000000012,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        14088
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "mixed/costly/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/prefix",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 24210073530,
+      "timingSamplesMs": [
+        0.661249999999999,
+        0.6047499999999992,
+        0.8799579999999985,
+        0.6249579999999995,
+        0.8589999999999947
+      ],
+      "medianBatchMs": 0.661249999999999,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        14088
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "mixed/costly/prefix",
+      "validated": true,
+      "config": {
+        "rows": 2000,
+        "iterations": 20,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "mixed/costly/prefix",
+        "depth": 16,
+        "cost": 32,
+        "mixed": true,
+        "prefix": true
+      },
+      "callbackCalls": {
+        "map": 41,
+        "where": 41
+      },
+      "outputLength": 5,
+      "checksum": 24210073530,
+      "timingSamplesMs": [
+        0.9200830000000018,
+        0.6238330000000012,
+        0.8204579999999986,
+        0.6344159999999945,
+        0.881541999999996
+      ],
+      "medianBatchMs": 0.8204579999999986,
+      "retainedHeapSamplesBytes": [
+        2656,
+        4640,
+        4640,
+        4640,
+        4872
+      ],
+      "medianRetainedHeapBytes": 4640
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "small/depth-0",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-0",
+        "depth": 0,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 0,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.455167000000003,
+        0.7616670000000028,
+        0.6431250000000013,
+        0.6430000000000007,
+        0.529083
+      ],
+      "medianBatchMs": 0.6430000000000007,
+      "retainedHeapSamplesBytes": [
+        154744,
+        160000,
+        169680,
+        159952,
+        165088
+      ],
+      "medianRetainedHeapBytes": 160000
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "small/depth-0",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-0",
+        "depth": 0,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 0,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.44624999999999915,
+        0.7160830000000011,
+        0.680374999999998,
+        0.5787499999999994,
+        0.6686659999999982
+      ],
+      "medianBatchMs": 0.6686659999999982,
+      "retainedHeapSamplesBytes": [
+        154640,
+        165312,
+        166528,
+        163640,
+        160616
+      ],
+      "medianRetainedHeapBytes": 163640
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "case": "small/depth-1",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-1",
+        "depth": 1,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 1,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.7250000000000014,
+        0.7366670000000006,
+        0.7132919999999991,
+        0.6895409999999984,
+        1.3691669999999974
+      ],
+      "medianBatchMs": 0.7250000000000014,
+      "retainedHeapSamplesBytes": [
+        162456,
+        153552,
+        167848,
+        167016,
+        188328
+      ],
+      "medianRetainedHeapBytes": 167016
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "case": "small/depth-1",
+      "validated": true,
+      "config": {
+        "rows": 1,
+        "iterations": 2000,
+        "rounds": 5,
+        "warmups": 3,
+        "name": "small/depth-1",
+        "depth": 1,
+        "cost": 0,
+        "mixed": false,
+        "prefix": false
+      },
+      "callbackCalls": {
+        "map": 1,
+        "where": 0
+      },
+      "outputLength": 1,
+      "checksum": 0,
+      "timingSamplesMs": [
+        0.7543749999999996,
+        0.759958000000001,
+        0.7107080000000003,
+        0.806916999999995,
+        0.7089169999999996
+      ],
+      "medianBatchMs": 0.7543749999999996,
+      "retainedHeapSamplesBytes": [
+        159960,
+        160000,
+        138728,
+        166704,
+        166912
+      ],
+      "medianRetainedHeapBytes": 160000
+    }
+  ]
+}

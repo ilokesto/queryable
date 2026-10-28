@@ -32,6 +32,32 @@ to 1,000 instances. These probes run outside measurements. Errors go to stderr a
 fail the command. `RESULTS.md` and `results.json` preserve a historical run of
 the original 12 cases, not results for the new mechanism or bundle workloads.
 
+## Before/after pipeline comparison
+
+Build the baseline revision and the candidate separately with Node 24, then run
+from the candidate repository:
+
+```sh
+pnpm build
+node --expose-gc bench/pipeline.mjs /absolute/baseline/dist/index.js pipeline-results.json
+```
+
+The baseline is a caller-provided compiled module, not a workspace dependency.
+The comparison covers eager filtering, full filter/map, first-five filter/map,
+and lazy filter/map over both records and a pre-materialized ordered sequence.
+Full-result cases do not add a redundant LIMIT. Construction and sequence
+materialization are excluded. Inputs contain 1,000, 10,000, or 100,000 records
+with 50% predicate selectivity and cheap callbacks.
+
+Each implementation runs in a fresh sequential Node child. Two independent
+before/after pairs reverse implementation order. Each child uses five warmup
+batches and seven timed batches, retaining outputs until timing ends; explicit
+GC, exact output assertions, and callback-count assertions are outside timers.
+The JSON retains every timing sample, effective iteration count, Node/V8 and
+machine metadata, and both module paths. It measures timing, not total
+allocation, peak memory, or construction cost. Run without other benchmarks or
+test jobs on the same machine, and interpret tiny differences as noise.
+
 ## Tracks
 
 | Track | Cases | Included work |
