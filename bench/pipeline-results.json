@@ -1,0 +1,1612 @@
+{
+  "measuredAt": "2026-10-28T02:45:31.128Z",
+  "runtime": {
+    "node": "v24.22.1",
+    "v8": "13.6.233.17-node.58"
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4 Pro"
+  },
+  "modules": {
+    "before": "file:///Users/ayden/Documents/ilokesto/queryable/dist/index.js",
+    "after": "file:///Users/ayden/Documents/ilokesto/queryable-perf/dist/index.js"
+  },
+  "options": {
+    "sizes": [
+      1000,
+      10000,
+      100000
+    ],
+    "warmups": 5,
+    "rounds": 7
+  },
+  "methodology": "Two before/after pairs with reversed order; fresh sequential child per case. Warmups and explicit GC outside timed retained-result batches. Exact output and callback counts checked outside timers. Input/query preparation excluded. Full-result cases omit LIMIT. Sequence case starts from a pre-materialized stable sequence. Timing only; allocation and peak memory are not measured.",
+  "results": [
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-filter",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        115.68540000000027,
+        102.28335000000008,
+        123.55204999999998,
+        133.46669999999997,
+        100.73124999999976,
+        100.67914999999985,
+        94.18750000000031
+      ],
+      "medianUs": 102.28335000000008
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-filter",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        80.94795000000019,
+        81.5646000000001,
+        87.75625000000034,
+        72.96875000000007,
+        75.8896,
+        72.83329999999992,
+        74.71665000000023
+      ],
+      "medianUs": 75.8896
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        175.75210000000007,
+        148.18955000000003,
+        193.66249999999994,
+        151.73749999999978,
+        150.95209999999994,
+        134.31044999999955,
+        142.18125000000015
+      ],
+      "medianUs": 150.95209999999994
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        111.73544999999976,
+        107.64999999999993,
+        123.0208000000001,
+        115.85,
+        103.85625000000012,
+        98.38750000000012,
+        100.41665000000002
+      ],
+      "medianUs": 107.64999999999993
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        129.03540000000007,
+        136.5416999999997,
+        178.48750000000032,
+        139.19165000000007,
+        129.8957999999999,
+        125.09374999999991,
+        122.5249999999999
+      ],
+      "medianUs": 129.8957999999999
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        88.00210000000028,
+        82.77915,
+        103.91875000000007,
+        96.20420000000003,
+        83.67915000000004,
+        77.87919999999993,
+        79.75415000000012
+      ],
+      "medianUs": 83.67915000000004
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        144.26039999999995,
+        116.25414999999995,
+        113.56040000000007,
+        112.51874999999991,
+        116.54579999999973,
+        110.54585000000012,
+        108.06664999999995
+      ],
+      "medianUs": 113.56040000000007
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        108.44795000000003,
+        79.44999999999993,
+        85.39165000000004,
+        86.0687500000001,
+        77.96039999999991,
+        86.99374999999989,
+        84.81665000000014
+      ],
+      "medianUs": 85.39165000000004
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "lazy-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        18.93539999999998,
+        19.97914999999999,
+        15.389550000000085,
+        17.274999999999707,
+        14.964600000000061,
+        19.827100000000186,
+        15.664600000000206
+      ],
+      "medianUs": 17.274999999999707
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "lazy-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        18.562499999999993,
+        19.01875000000004,
+        15.197949999999949,
+        17.89164999999997,
+        15.229150000000047,
+        15.25420000000004,
+        18.37920000000004
+      ],
+      "medianUs": 17.89164999999997
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "sequence-lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        53.38330000000013,
+        42.383350000000064,
+        46.54795000000007,
+        47.379149999999726,
+        45.431250000000034,
+        43.062499999999915,
+        44.3875000000002
+      ],
+      "medianUs": 45.431250000000034
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "sequence-lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        55.20624999999999,
+        44.624999999999915,
+        40.625,
+        46.38124999999995,
+        44.11039999999993,
+        42.145849999999996,
+        41.20000000000026
+      ],
+      "medianUs": 44.11039999999993
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-filter",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        1539.581249999999,
+        1490.47705,
+        1509.30625,
+        1561.1770500000007,
+        1486.2499999999984,
+        1491.1062500000014,
+        1505.9687499999995
+      ],
+      "medianUs": 1505.9687499999995
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-filter",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        1349.0916999999995,
+        1308.2645499999999,
+        1282.80625,
+        1273.4333000000006,
+        1260.6208500000007,
+        1306.4333500000005,
+        1285.4145999999987
+      ],
+      "medianUs": 1285.4145999999987
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        2123.679150000001,
+        2064.8978999999995,
+        2186.979149999999,
+        2224.0146000000013,
+        2137.7478999999994,
+        2138.835399999999,
+        2143.6125
+      ],
+      "medianUs": 2138.835399999999
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1778.1437499999997,
+        1702.1708500000004,
+        1760.077099999998,
+        1737.1166499999988,
+        1783.3125000000025,
+        1709.7458000000017,
+        1764.254200000002
+      ],
+      "medianUs": 1760.077099999998
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1951.3999999999996,
+        1926.3146000000008,
+        1937.979149999998,
+        1961.1562499999993,
+        1963.3417000000009,
+        1920.791649999998,
+        1960.0854
+      ],
+      "medianUs": 1951.3999999999996
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1576.1603999999993,
+        1551.8103999999994,
+        1527.1666499999997,
+        1491.5958499999988,
+        1537.5500000000015,
+        1527.054149999998,
+        1495.8103999999992
+      ],
+      "medianUs": 1527.1666499999997
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1050.7125,
+        1022.5667000000001,
+        1004.7166500000003,
+        981.2207999999998,
+        997.0979499999997,
+        981.8041499999993,
+        996.418750000001
+      ],
+      "medianUs": 997.0979499999997
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        976.9229499999994,
+        946.2083500000006,
+        929.925,
+        918.6291499999995,
+        951.1875000000003,
+        911.9666499999994,
+        944.0166500000003
+      ],
+      "medianUs": 944.0166500000003
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "lazy-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        377.67920000000004,
+        340.62085000000053,
+        378.8937500000003,
+        357.58749999999964,
+        343.0770499999994,
+        332.87499999999994,
+        324.9312500000002
+      ],
+      "medianUs": 343.0770499999994
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "lazy-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        326.4958499999999,
+        383.67500000000024,
+        352.1999999999999,
+        347.5583499999999,
+        384.0062500000002,
+        391.93539999999985,
+        335.8375000000002
+      ],
+      "medianUs": 352.1999999999999
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "sequence-lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        294.7125000000003,
+        291.35415000000006,
+        296.71044999999975,
+        276.06044999999995,
+        275.86875000000003,
+        275.70625000000035,
+        281.14375000000035
+      ],
+      "medianUs": 281.14375000000035
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "sequence-lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        279.4333500000001,
+        280.38335000000035,
+        283.09999999999957,
+        268.3833499999999,
+        264.9042000000001,
+        258.51664999999997,
+        259.63335
+      ],
+      "medianUs": 268.3833499999999
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-filter",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        20831.85000000001,
+        21022.725000000013,
+        21259.699999999997,
+        21015.624999999978,
+        21228.15840000003,
+        20881.31659999999,
+        21073.05000000001
+      ],
+      "medianUs": 21022.725000000013
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-filter",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        18877.07499999999,
+        20003.700000000004,
+        18701.824999999986,
+        18637.975000000006,
+        18586.974999999984,
+        18579.34180000002,
+        18338.008399999988
+      ],
+      "medianUs": 18637.975000000006
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        30865.908399999993,
+        30519.57499999999,
+        30564.3,
+        30920.283400000015,
+        30430.58340000002,
+        30724.216599999996,
+        30782.375
+      ],
+      "medianUs": 30724.216599999996
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        26284.933399999998,
+        26513.541599999986,
+        26389.275,
+        26301.93340000001,
+        26353.691600000002,
+        26282.558400000016,
+        26662.033400000022
+      ],
+      "medianUs": 26353.691600000002
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "eager-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        30767.666799999985,
+        28594.791800000028,
+        28629.31660000004,
+        28533.408199999987,
+        29021.8668,
+        29106.541800000014,
+        28597.48339999996
+      ],
+      "medianUs": 28629.31660000004
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "eager-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        24130.841599999985,
+        24003.19180000001,
+        24009.433400000013,
+        24184.175000000007,
+        23948.633400000017,
+        24109.15,
+        24190.341599999963
+      ],
+      "medianUs": 24109.15
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        13130.233399999997,
+        12959.524999999998,
+        12973.675000000003,
+        13089.249999999993,
+        13012.641800000007,
+        13062.466799999993,
+        12973.65000000002
+      ],
+      "medianUs": 13012.641800000007
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        12791.433400000005,
+        12693.166599999995,
+        12844.433400000004,
+        12736.016599999994,
+        12533.583199999997,
+        12736.641800000007,
+        12699.741600000016
+      ],
+      "medianUs": 12736.016599999994
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "lazy-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        7219.983199999991,
+        7322.949999999992,
+        7242.433400000004,
+        7296.8166,
+        7247.908400000006,
+        7363.316599999996,
+        7321.933399999989
+      ],
+      "medianUs": 7296.8166
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "lazy-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        7234.675000000005,
+        7237.491799999998,
+        7314.191799999991,
+        7380.8582,
+        7355.274999999994,
+        7301.499999999998,
+        7336.699999999995
+      ],
+      "medianUs": 7314.191799999991
+    },
+    {
+      "pair": 1,
+      "implementation": "before",
+      "name": "sequence-lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        2836.3166000000033,
+        2872.5918000000033,
+        2949.7584000000015,
+        2857.408200000003,
+        2952.8084000000035,
+        2905.5334000000016,
+        2951.608400000009
+      ],
+      "medianUs": 2905.5334000000016
+    },
+    {
+      "pair": 1,
+      "implementation": "after",
+      "name": "sequence-lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        2761.5584000000013,
+        2833.4749999999985,
+        2750.183400000003,
+        2756.483400000002,
+        2904.9416000000065,
+        2790.1918000000023,
+        2738.891799999999
+      ],
+      "medianUs": 2761.5584000000013
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-filter",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        84.43959999999997,
+        82.1479,
+        86.51250000000026,
+        76.23750000000022,
+        75.08960000000009,
+        71.48125000000007,
+        71.07920000000014
+      ],
+      "medianUs": 76.23750000000022
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-filter",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        110.60204999999996,
+        100.65415000000009,
+        142.31874999999974,
+        123.18749999999986,
+        97.46045000000017,
+        105.4103999999999,
+        93.49795000000007
+      ],
+      "medianUs": 105.4103999999999
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        124.88540000000015,
+        104.05209999999984,
+        125.59374999999982,
+        121.83335,
+        98.62080000000013,
+        105.44375000000022,
+        100.76664999999991
+      ],
+      "medianUs": 105.44375000000022
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        177.12290000000016,
+        149.05829999999975,
+        201.09169999999992,
+        153.52914999999996,
+        144.98125000000002,
+        148.10414999999998,
+        145.15209999999996
+      ],
+      "medianUs": 149.05829999999975
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        94.92499999999993,
+        80.85415000000005,
+        117.4125,
+        88.58335000000004,
+        94.42704999999982,
+        78.4937499999998,
+        91.6541500000001
+      ],
+      "medianUs": 91.6541500000001
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        135.18959999999998,
+        122.44375000000005,
+        183.8207999999998,
+        132.9895500000003,
+        137.82499999999976,
+        129.35829999999982,
+        126.29584999999963
+      ],
+      "medianUs": 132.9895500000003
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        110.7187500000002,
+        82.07500000000003,
+        84.95415000000008,
+        84.12079999999982,
+        76.54165000000006,
+        85.35625000000024,
+        83.20000000000007
+      ],
+      "medianUs": 84.12079999999982
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        135.09375000000006,
+        112.13540000000003,
+        108.92499999999998,
+        113.4125000000001,
+        114.85830000000021,
+        108.16039999999987,
+        103.4791499999997
+      ],
+      "medianUs": 112.13540000000003
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "lazy-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        16.889600000000016,
+        19.343749999999993,
+        15.066649999999981,
+        16.720850000000098,
+        15.47085000000017,
+        16.795849999999746,
+        14.962500000000034
+      ],
+      "medianUs": 16.720850000000098
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "lazy-prefix",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        16.447899999999827,
+        19.860450000000007,
+        15.447900000000027,
+        14.90834999999997,
+        17.439549999999926,
+        15.862500000000068,
+        15.075000000000216
+      ],
+      "medianUs": 15.862500000000068
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "sequence-lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        57.537500000000115,
+        42.85624999999982,
+        45.006250000000136,
+        50.48330000000014,
+        45.96459999999993,
+        43.48750000000017,
+        43.43334999999975
+      ],
+      "medianUs": 45.006250000000136
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "sequence-lazy-full",
+      "rows": 1000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 1000,
+        "mapper": 500
+      },
+      "validated": true,
+      "samplesUs": [
+        53.320850000000064,
+        44.4958500000002,
+        42.318750000000094,
+        46.131249999999824,
+        44.483350000000144,
+        43.204149999999686,
+        41.92499999999981
+      ],
+      "medianUs": 44.483350000000144
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-filter",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        1311.3520499999993,
+        1355.3729000000005,
+        1323.9958000000001,
+        1319.6875000000005,
+        1340.9645499999983,
+        1329.4229,
+        1370.5083000000002
+      ],
+      "medianUs": 1329.4229
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-filter",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        1563.6667000000002,
+        1595.4333000000006,
+        1716.5999999999997,
+        1871.9729,
+        1654.4603999999993,
+        1635.5333000000003,
+        1677.5437500000012
+      ],
+      "medianUs": 1654.4603999999993
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1773.7478999999992,
+        1774.6645999999982,
+        1824.9874999999975,
+        1764.6041499999997,
+        1717.2645999999986,
+        1812.0749999999985,
+        1815.5478999999984
+      ],
+      "medianUs": 1774.6645999999982
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        2208.6792,
+        2230.7521000000006,
+        2256.3041499999995,
+        2232.3333500000017,
+        2199.3021,
+        2157.4854500000015,
+        2130.770849999999
+      ],
+      "medianUs": 2208.6792
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1614.8833499999996,
+        1530.2645999999995,
+        1660.8874999999996,
+        1553.4853999999996,
+        1608.277099999998,
+        1578.6895999999983,
+        1655.095799999998
+      ],
+      "medianUs": 1608.277099999998
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        2084.2979499999997,
+        1972.3937500000004,
+        2023.9895499999989,
+        2017.4417000000005,
+        1974.1978999999985,
+        1951.135450000001,
+        2052.4062499999986
+      ],
+      "medianUs": 2017.4417000000005
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        968.8749999999998,
+        945.3791499999994,
+        945.0687499999988,
+        926.3708499999993,
+        924.1437500000004,
+        909.5291499999988,
+        947.1104499999996
+      ],
+      "medianUs": 945.0687499999988
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        1044.1187499999999,
+        1016.5354000000009,
+        997.8354000000011,
+        965.2041499999996,
+        971.9291500000012,
+        992.6437500000005,
+        1012.983349999999
+      ],
+      "medianUs": 997.8354000000011
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "lazy-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        339.3458500000001,
+        417.3979000000003,
+        343.1687500000002,
+        375.08125000000024,
+        370.97710000000035,
+        375.34585000000004,
+        352.69584999999995
+      ],
+      "medianUs": 370.97710000000035
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "lazy-prefix",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        374.9604500000004,
+        386.0374999999998,
+        359.27085000000005,
+        348.5937499999999,
+        378.6292000000003,
+        336.6541499999997,
+        326.29999999999984
+      ],
+      "medianUs": 359.27085000000005
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "sequence-lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        291.50625000000014,
+        277.3333000000001,
+        294.2417000000006,
+        265.54374999999976,
+        266.8229000000004,
+        264.3062499999999,
+        266.80624999999975
+      ],
+      "medianUs": 266.8229000000004
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "sequence-lazy-full",
+      "rows": 10000,
+      "iterations": 20,
+      "callbackCounts": {
+        "predicate": 10000,
+        "mapper": 5000
+      },
+      "validated": true,
+      "samplesUs": [
+        300.92290000000014,
+        310.6499999999997,
+        292.53959999999995,
+        289.58330000000035,
+        271.09789999999947,
+        273.89579999999967,
+        273.57080000000025
+      ],
+      "medianUs": 289.58330000000035
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-filter",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        18471.891600000003,
+        18595.566600000006,
+        18629.666599999997,
+        18639.683400000013,
+        18311.08340000003,
+        20049.008400000002,
+        18581.374999999978
+      ],
+      "medianUs": 18595.566600000006
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-filter",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 0
+      },
+      "validated": true,
+      "samplesUs": [
+        23088.725,
+        21239.6,
+        20907.783399999993,
+        20751.641600000017,
+        20688.258399999995,
+        20798.54180000002,
+        21191.44160000001
+      ],
+      "medianUs": 20907.783399999993
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        26555.166599999986,
+        26502.64159999999,
+        27113.458399999992,
+        26685.275,
+        26767.591600000014,
+        26637.350000000017,
+        26881.7
+      ],
+      "medianUs": 26685.275
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        30603.541599999997,
+        30982.858400000034,
+        30956.3666,
+        31068.816799999964,
+        30608.591599999996,
+        30992.30820000002,
+        30846.4332
+      ],
+      "medianUs": 30956.3666
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "eager-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        24237.774999999987,
+        24461.20840000001,
+        24298.83339999999,
+        24432.67499999997,
+        24199.566800000004,
+        24426.76660000002,
+        24185.65840000001
+      ],
+      "medianUs": 24298.83339999999
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "eager-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        29033.091600000014,
+        28895.649999999976,
+        28758.916799999995,
+        28632.825,
+        28813.516600000003,
+        28584.783400000015,
+        29330.366600000027
+      ],
+      "medianUs": 28813.516600000003
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        12762.0584,
+        12786.300000000007,
+        12858.633400000008,
+        12619.09159999998,
+        12731.750000000011,
+        12672.04999999999,
+        12948.341800000004
+      ],
+      "medianUs": 12762.0584
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        12980.849999999999,
+        12827.4,
+        13003.800000000001,
+        13245.041599999991,
+        13371.558400000004,
+        13173.25840000001,
+        13031.3584
+      ],
+      "medianUs": 13031.3584
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "lazy-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        7256.574999999999,
+        7366.499999999997,
+        7346.258399999999,
+        7397.3665999999985,
+        7342.783399999996,
+        7398.55,
+        7299.60840000001
+      ],
+      "medianUs": 7346.258399999999
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "lazy-prefix",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 10,
+        "mapper": 5
+      },
+      "validated": true,
+      "samplesUs": [
+        7369.949999999994,
+        7432.058199999995,
+        7500.733200000002,
+        7402.783399999998,
+        7499.824999999999,
+        7385.500000000002,
+        7434.9334
+      ],
+      "medianUs": 7432.058199999995
+    },
+    {
+      "pair": 2,
+      "implementation": "after",
+      "name": "sequence-lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        2697.2834000000034,
+        2651.400000000001,
+        2728.616599999998,
+        2741.166599999997,
+        2717.266600000005,
+        2716.674999999998,
+        2740.5500000000075
+      ],
+      "medianUs": 2717.266600000005
+    },
+    {
+      "pair": 2,
+      "implementation": "before",
+      "name": "sequence-lazy-full",
+      "rows": 100000,
+      "iterations": 5,
+      "callbackCounts": {
+        "predicate": 100000,
+        "mapper": 50000
+      },
+      "validated": true,
+      "samplesUs": [
+        2816.775000000001,
+        2830.575000000005,
+        2829.8415999999975,
+        2832.0584000000053,
+        2810.583399999996,
+        2854.191800000001,
+        2867.658199999994
+      ],
+      "medianUs": 2830.575000000005
+    }
+  ]
+}
