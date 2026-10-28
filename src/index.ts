@@ -532,7 +532,16 @@ function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => fals
 function where<T, S extends T>(this: Queryable<T>, predicate: (value: T, key: string) => value is S): Queryable<S>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T>;
 function where<T>(this: Queryable<T>, predicate: (value: T, key: string) => boolean): Queryable<T> {
-  return fromEntries(filterEntries(recordEntries(this), predicate));
+  const result: Queryable<T> = Object.create(queryablePrototype);
+  for (const key in this) {
+    if (Object.hasOwn(this, key)) {
+      const value = this[key] as T;
+      if (predicate(value, key)) {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
 }
 
 function zip<T, U extends readonly unknown[]>(
@@ -710,7 +719,13 @@ const queryablePrototype = {
     return new Sequence(sortEntries(recordEntries(this), compareFn), false);
   },
   [MAP]<T, U>(this: Queryable<T>, fn: (value: T, key: string) => U): Queryable<U> {
-    return fromEntries(mapEntries(recordEntries(this), fn));
+    const result: Queryable<U> = Object.create(queryablePrototype);
+    for (const key in this) {
+      if (Object.hasOwn(this, key)) {
+        result[key] = fn(this[key] as T, key);
+      }
+    }
+    return result;
   },
   [PICK]<T>(this: Queryable<T>, ...keys: string[]): Queryable<T> {
     const result: Queryable<T> = Object.create(queryablePrototype);
@@ -722,7 +737,24 @@ const queryablePrototype = {
     return result;
   },
   [LIMIT]<T>(this: Queryable<T>, n: number): Queryable<T> {
-    return fromEntries(limitEntries(recordEntries(this), n));
+    const count = Number.isNaN(n) ? 0 : Math.trunc(n);
+    if (count < 0 && count !== -Infinity) {
+      return fromEntries(limitEntries(recordEntries(this), n));
+    }
+    const result: Queryable<T> = Object.create(queryablePrototype);
+    if (count === 0 || count === -Infinity) {
+      return result;
+    }
+    let remaining = count;
+    for (const key in this) {
+      if (Object.hasOwn(this, key)) {
+        result[key] = this[key] as T;
+        if (--remaining === 0) {
+          break;
+        }
+      }
+    }
+    return result;
   },
   [SKIP]<T>(this: Queryable<T>, n: number): Queryable<T> {
     return fromEntries(skipEntries(recordEntries(this), n));
