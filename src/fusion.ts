@@ -32,8 +32,9 @@ export function* mapEntries<T, U>(
   source: Iterable<Entry<T>>,
   fn: (value: T, key: string) => U,
 ): Generator<Entry<U>> {
-  for (const [key, value] of source) {
-    yield [key, fn(value, key)];
+  for (const entry of source) {
+    const key = entry[0];
+    yield [key, fn(entry[1], key)];
   }
 }
 
@@ -41,9 +42,9 @@ function* fusedEntries<S, T>(source: Iterable<Entry<S>>, compile: Compile<S, T>)
   // Only this library-owned tuple signals emission; payloads are never control values.
   let output: Entry<T> | undefined;
   const consume = compile((value, key) => { output = [key, value]; });
-  for (const [key, value] of source) {
+  for (const entry of source) {
     output = undefined;
-    consume(value, key);
+    consume(entry[1], entry[0]);
     if (output !== undefined) {
       yield output;
     }
