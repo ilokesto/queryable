@@ -1,5 +1,12 @@
 # @ilokesto/queryable
 
+## 0.1.1
+
+### Patch Changes
+
+- 7c30830: Reduce eager record WHERE, MAP, and nonnegative LIMIT overhead with direct record loops while preserving eager snapshots, callback order, and buffered negative LIMIT behavior.
+- 50ded81: Reduce lazy mapping and fused pipeline traversal overhead by reading normalized entry tuples directly instead of creating an array iterator for each entry.
+
 ## 0.1.0
 
 ### Minor Changes
