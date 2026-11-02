@@ -1,5 +1,7 @@
 # @ilokesto/queryable
 
+Contributors: follow the English API contract in [JSDOC.md](./JSDOC.md) and run `pnpm lint:jsdoc`. The full `pnpm test` gate also checks semantic documentation.
+
 Query records with shared Symbol methods, ordered sequences, and optional lazy evaluation.
 
 ![Public npm target](https://img.shields.io/badge/status-public_npm_target-555?style=flat)

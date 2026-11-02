@@ -5,10 +5,13 @@ export const BFS = Symbol("bfs");
 /** Traverse each root and its descendants in preorder depth-first order. */
 export const DFS = Symbol("dfs");
 
+/** Original-input location supplied to child, identity, and output-key selectors. */
 export interface TraversalContext<T> {
   /** Local input key, independent of the selected output key. */
   readonly key: string;
+  /** Original root value shared by every descendant on this path. */
   readonly root: T;
+  /** Original local input key of the root. */
   readonly rootKey: string;
   /** Original local keys, including the root key. A fresh array on each read. */
   readonly path: readonly string[];
@@ -16,19 +19,25 @@ export interface TraversalContext<T> {
   readonly depth: number;
 }
 
+/** Visited payload paired with its original-input traversal context. */
 export interface TraversalNode<T> extends TraversalContext<T> {
+  /** Original visited value; payloads are not cloned or inspected. */
   readonly value: T;
 }
 
+/** Inclusive depth, optional global identity suppression, and output collision policy. */
 export interface TraversalOptions<T> {
   /** Inclusive; a nonnegative safe integer or Infinity (the default). */
   readonly maxDepth?: number;
   /** Skip previously visited identities and their descendants, across all roots. */
   readonly visitIdentity?: (value: T, context: TraversalContext<T>) => unknown;
+  /** Policy applied by the query boundary to selected output keys; defaults to error. */
   readonly duplicateKeys?: KeyCollisionPolicy;
 }
 
+/** Produces locally keyed children after their parent is yielded, unless at maxDepth. */
 export type ChildrenSelector<T> = (value: T, context: TraversalContext<T>) => Iterable<readonly [string, T]>;
+/** Chooses an output key independently of original local keys and paths. */
 export type TraversalKeySelector<T> = (value: T, context: TraversalContext<T>) => string;
 
 interface PathLink {
@@ -42,7 +51,19 @@ interface Frame<T> {
   readonly path: PathLink | undefined;
 }
 
-/** Validate once, before any iterator acquisition. */
+/**
+ * @description Resolves the inclusive depth bound before iterator acquisition, throwing RangeError unless it is a nonnegative safe integer or Infinity.
+ * @param {TraversalOptions<T>} options - Traversal settings whose depth bound is validated.
+ * @param {number} [options.maxDepth] - Inclusive maximum depth; omitted means Infinity.
+ * @param {(value: T, context: TraversalContext<T>) => unknown} [options.visitIdentity] - Identity selector used during traversal, not called by this validator.
+ * @param {KeyCollisionPolicy} [options.duplicateKeys] - Output collision policy, not applied by this validator.
+ * @returns {number} Validated depth bound; roots have depth zero.
+ * @example
+ * ```ts
+ * traversalDepth({ maxDepth: 2 }); // 2
+ * traversalDepth({}); // Infinity
+ * ```
+ */
 export function traversalDepth<T>(options: TraversalOptions<T>): number {
   const depth = options.maxDepth === undefined ? Infinity : options.maxDepth;
   if (depth !== Infinity && (!Number.isSafeInteger(depth) || depth < 0)) {
@@ -71,8 +92,24 @@ function nodeAt<T>(key: string, value: T, parent: TraversalNode<T> | undefined, 
 }
 
 /**
- * Iterative preorder stack / level queue. Yield before selecting children, so
- * a prefix consumer never expands its final node. Paths use links internally.
+ * @description Traverses iteratively in breadth-first or preorder depth-first order, yielding each node before selecting its children. Early exit closes acquired iterators without replacing an existing failure.
+ * @param {Iterable<readonly [string, T]>} roots - Locally keyed root entries.
+ * @param {ChildrenSelector<T>} children - Selects keyed children only after a yielded node is resumed below maxDepth.
+ * @param {TraversalKeySelector<T>} keySelector - Selects the output key using the value and original-input context.
+ * @param {TraversalOptions<T>} options - Identity suppression and query-boundary collision settings.
+ * @param {number} [options.maxDepth] - Original depth option; the resolved maxDepth argument controls this generator.
+ * @param {(value: T, context: TraversalContext<T>) => unknown} [options.visitIdentity] - Skips previously seen SameValueZero identities and their descendants across all roots.
+ * @param {KeyCollisionPolicy} [options.duplicateKeys] - Collision policy for the caller's boundary, not applied by this generator.
+ * @param {number} maxDepth - Already validated inclusive depth limit; roots have depth zero.
+ * @param {boolean} breadthFirst - True visits level by level; false visits descendants before the next sibling.
+ * @returns {Generator<readonly [string, TraversalNode<T>]>} Selected output keys and fresh traversal nodes with original values and fresh path arrays on each read.
+ * @example
+ * ```ts
+ * const roots: [string, number][] = [["root", 0]];
+ * const entries = traversalEntries(roots, n => n < 1 ? [["child", n + 1]] : [],
+ *   (_n, context) => context.path.join("/"), {}, 1, true);
+ * [...entries].map(([key]) => key); // ["root", "root/child"]
+ * ```
  */
 export function* traversalEntries<T>(
   roots: Iterable<readonly [string, T]>,
