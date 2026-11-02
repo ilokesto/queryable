@@ -1,5 +1,11 @@
 # @ilokesto/queryable
 
+## 0.1.2
+
+### Patch Changes
+
+- ebf4675: Document the public query operators, factories and source helpers in emitted TypeScript declarations without changing runtime behavior.
+
 ## 0.1.1
 
 ### Patch Changes
