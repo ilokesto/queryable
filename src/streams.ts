@@ -3,35 +3,59 @@ import type { AsyncQuerySequence } from "./async.js";
 
 type Entry<T> = readonly [string, T];
 
+/** Key generation and cancellation shared by cold streams and hot subscriptions. */
 export interface StreamSourceOptions<T> {
+  /** Stops consumption with the signal's exact reason and releases source resources. */
   readonly signal?: AbortSignal;
   /** Called before awaiting the value; the ordinal starts at zero per consumption. */
   readonly key?: (value: T, ordinal: bigint) => string;
 }
 
+/** Explicit bounded buffering policy for each independent hot subscription. */
 export interface EventSourceOptions<T> extends StreamSourceOptions<T> {
+  /** Positive safe-integer maximum number of pending events. */
   readonly capacity: number;
+  /** Fail and discard the queue, or discard the oldest/newest pending event when full. */
   readonly overflow: "error" | "drop-oldest" | "drop-newest";
 }
 
+/** EventTarget event names; neither error nor completion is inferred by default. */
 export interface EventTargetOptions extends EventSourceOptions<Event> {
+  /** Optional event whose Event object becomes the exact failure. */
   readonly errorEvent?: string;
+  /** Optional event that detaches listeners and drains queued data before completion. */
   readonly endEvent?: string;
 }
 
+/** EventEmitter event names and bounded buffering of emitted argument tuples. */
 export interface EventEmitterOptions<T extends unknown[]> extends EventSourceOptions<T> {
   /** Defaults to "error"; failures use the first emitted argument unchanged. */
   readonly errorEvent?: string | symbol;
+  /** Optional completion event; queued data is drained after listeners detach. */
   readonly endEvent?: string | symbol;
 }
 
 /** Structural contract: importing this module never imports node:events. */
 export interface EventEmitterSource<T extends unknown[]> {
+  /** Installs a listener; the return value is ignored by the adapter. */
   on(event: string | symbol, listener: (...args: T) => void): unknown;
+  /** Removes the exact listener installed by on; the return value is ignored. */
   off(event: string | symbol, listener: (...args: T) => void): unknown;
 }
 
+/**
+ * @description Signals that a hot subscription's pending queue exceeded its configured capacity
+ * under the error overflow policy. The subscription detaches and discards its queued events.
+ * @example
+ * if (error instanceof EventQueueOverflowError) console.error(error.capacity);
+ */
 export class EventQueueOverflowError extends Error {
+  /**
+   * @description Records the queue capacity that was exceeded.
+   * @param {number} capacity - Configured maximum pending events.
+   * @example
+   * const error = new EventQueueOverflowError(16);
+   */
   constructor(readonly capacity: number) {
     super(`Event queue capacity ${capacity} exceeded`);
     this.name = "EventQueueOverflowError";
@@ -209,7 +233,23 @@ function eventSequence<T>(options: EventSourceOptions<T>, connect: Connect<T>): 
   }, signal === undefined ? {} : { signal });
 }
 
-/** Hot, non-replaying events; each consumption owns an independent subscription. */
+/**
+ * @description Creates a hot, non-replaying query; each started consumption owns listeners and a
+ * bounded queue. End events drain queued data; errors, abort, and early return detach and discard it.
+ * @param {EventTarget} source - Target to subscribe to only when consumption starts.
+ * @param {string} event - Data event name.
+ * @param {EventTargetOptions} options - Required queue policy and optional event names.
+ * @param {number} options.capacity - Positive safe-integer pending-event limit.
+ * @param {"error" | "drop-oldest" | "drop-newest"} options.overflow - Action when the queue is full; error produces EventQueueOverflowError.
+ * @param {AbortSignal} [options.signal] - Cancellation shared with the query.
+ * @param {(value: Event, ordinal: bigint) => string} [options.key] - Key callback before awaiting values; defaults to decimal zero-based ordinals per subscription, including dropped events.
+ * @param {string} [options.errorEvent] - Failure event; its Event object is rejected unchanged.
+ * @param {string} [options.endEvent] - Completion event; omitted means no event-driven completion.
+ * @returns {AsyncQuerySequence<Event>} Deferred subscription with the AsyncQuerySequence operations.
+ * @example
+ * const query = fromEventTarget(target, "message", { capacity: 16, overflow: "drop-oldest" });
+ * const first = await query[FIRST]();
+ */
 export function fromEventTarget(
   source: EventTarget,
   event: string,
@@ -232,7 +272,25 @@ export function fromEventTarget(
   });
 }
 
-/** EventEmitter values are argument tuples, including zero-argument events. */
+/**
+ * @description Creates independent hot subscriptions yielding argument tuples, including empty tuples.
+ * No events replay. End detaches and drains; failures, abort, and early return detach and discard buffers.
+ * @param {EventEmitterSource<T>} source - Structural on/off emitter; this module never imports node:events.
+ * @param {(event: string | symbol, listener: (...args: T) => void) => unknown} source.on - Installs a listener; its return value is ignored.
+ * @param {(event: string | symbol, listener: (...args: T) => void) => unknown} source.off - Removes the exact installed listener; its return value is ignored.
+ * @param {string | symbol} event - Data event name.
+ * @param {EventEmitterOptions<T>} options - Required queue policy and optional event names.
+ * @param {number} options.capacity - Positive safe-integer pending-tuple limit.
+ * @param {"error" | "drop-oldest" | "drop-newest"} options.overflow - Fail with EventQueueOverflowError or discard pending tuples when full.
+ * @param {AbortSignal} [options.signal] - Cancellation whose exact reason rejects consumption.
+ * @param {(value: T, ordinal: bigint) => string} [options.key] - Tuple key callback; defaults to decimal ordinals counting all received data events.
+ * @param {string | symbol} [options.errorEvent] - Defaults to error; the first emitted argument is rejected unchanged, even undefined.
+ * @param {string | symbol} [options.endEvent] - Optional completion event.
+ * @returns {AsyncQuerySequence<T>} Deferred query over emitted argument tuples.
+ * @example
+ * const query = fromEventEmitter<[number]>(emitter, "data", { capacity: 8, overflow: "error" });
+ * const first = await query[FIRST]();
+ */
 export function fromEventEmitter<T extends unknown[]>(
   source: EventEmitterSource<T>,
   event: string | symbol,
@@ -254,8 +312,19 @@ export function fromEventEmitter<T extends unknown[]>(
 }
 
 /**
- * Cold source: return a fresh, unlocked stream synchronously for every consumption.
- * Normal exhaustion releases; all other exits cancel then release the reader.
+ * @description Creates a cold query acquiring a fresh unlocked stream for every consumption.
+ * Normal exhaustion releases its reader; all other exits cancel then release it. Cancellation does
+ * not wait for a producer's non-settling cancel, and primary failures retain their identity.
+ * @param {(signal?: AbortSignal) => ReadableStream<T>} factory - Synchronously returns a fresh unlocked stream with the configured signal.
+ * @param {StreamSourceOptions<T>} [options] - Key and cancellation settings.
+ * @param {AbortSignal} [options.signal] - Cancellation checked before acquisition and while reading.
+ * @param {(value: T, ordinal: bigint) => string} [options.key] - Key before awaiting each value; defaults to decimal zero-based ordinals per consumption.
+ * @returns {AsyncQuerySequence<Awaited<T>>} Repeatable deferred stream query with awaited values.
+ * @example
+ * const query = fromReadableStream(() => new ReadableStream({
+ *   start(controller) { controller.enqueue(42); controller.close(); },
+ * }));
+ * const values = await query[VALUES]();
  */
 export function fromReadableStream<T>(
   factory: (signal?: AbortSignal) => ReadableStream<T>,

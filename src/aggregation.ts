@@ -15,13 +15,33 @@ export const REDUCE_BY = Symbol("reduce_by");
 
 /** Numeric summary; empty input has sum 0 and undefined average/min/max. */
 export interface NumericStats {
+  /** Number of visited entries, including selected NaN values. */
   readonly count: number;
+  /** Left-to-right native addition, beginning at positive zero. */
   readonly sum: number;
+  /** Sum divided by count, or undefined when no entries were visited. */
   readonly average: number | undefined;
+  /** Math.min result, including NaN and signed-zero behavior; undefined when empty. */
   readonly min: number | undefined;
+  /** Math.max result, including NaN and signed-zero behavior; undefined when empty. */
   readonly max: number | undefined;
 }
 
+/**
+ * @description Calculates numeric summary fields in one traversal, calling the selector once per entry in source order.
+ * @param {Iterable<readonly [string, T]>} entries - Keyed values to summarize.
+ * @param {(value: T, key: string) => number} selector - Selects a number using the value and original key.
+ * @returns {NumericStats} Fresh numeric summary; empty input has sum zero and undefined average and extrema.
+ * - count `number` - Number of entries visited.
+ * - sum `number` - Native left-to-right sum starting at positive zero.
+ * - average `number | undefined` - Sum divided by count, or undefined for empty input.
+ * - min `number | undefined` - Math.min of selected values, or undefined for empty input.
+ * - max `number | undefined` - Math.max of selected values, or undefined for empty input.
+ * @example
+ * ```ts
+ * numericStats([["a", 2], ["b", 4]], value => value); // { count: 2, sum: 6, average: 3, min: 2, max: 4 }
+ * ```
+ */
 export function numericStats<T>(
   entries: Iterable<readonly [string, T]>,
   selector: (value: T, key: string) => number,
@@ -40,6 +60,18 @@ export function numericStats<T>(
   return { count, sum, average: count === 0 ? undefined : sum / count, min, max };
 }
 
+/**
+ * @description Folds each selected string group independently, initializing it once on first encounter. Special keys are safe own properties of a null-prototype result.
+ * @param {Iterable<readonly [string, T]>} entries - Keyed values visited in source order.
+ * @param {(value: T, key: string) => K} keyFn - Selects each entry's group before its reducer runs.
+ * @param {(accumulator: A, value: T, key: string) => A} reducer - Updates the group's accumulator with the original entry key.
+ * @param {(groupKey: K) => A} initial - Creates the initial accumulator once for each encountered group.
+ * @returns {Partial<Record<K, A>>} Group accumulators; absent groups have no own property, while stored undefined is retained.
+ * @example
+ * ```ts
+ * reduceBy([["a", 1], ["b", 3]], () => "odd", (sum, n) => sum + n, () => 0); // { odd: 4 }
+ * ```
+ */
 export function reduceBy<T, K extends string, A>(
   entries: Iterable<readonly [string, T]>,
   keyFn: (value: T, key: string) => K,

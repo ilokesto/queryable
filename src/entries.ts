@@ -1,9 +1,28 @@
+/** Creates a keyed iterable for each consumption; repeatability is the factory's responsibility. */
 export type EntrySourceFactory<T> = () => Iterable<readonly [string, T]>;
+/** Reject duplicates, stream the first occurrence, or buffer the last value at each key's first position. */
 export type KeyCollisionPolicy = "error" | "first" | "last";
 
+/**
+ * @description Reports a repeated query key when the active collision policy rejects duplicates.
+ * @example
+ * ```ts
+ * const error = new DuplicateKeyError("item");
+ * error.key; // "item"
+ * ```
+ */
 export class DuplicateKeyError extends Error {
+  /** Original repeated key, including special names such as __proto__. */
   readonly key: string;
 
+  /**
+   * @description Creates a named duplicate-key error carrying the conflicting key.
+   * @param {string} key - Key encountered more than once.
+   * @example
+   * ```ts
+   * throw new DuplicateKeyError("invoice");
+   * ```
+   */
   constructor(key: string) {
     super(`Duplicate query key: ${key}`);
     this.name = "DuplicateKeyError";
@@ -20,6 +39,16 @@ function* validatedEntries<T>(source: Iterable<readonly [string, T]>): Generator
   }
 }
 
+/**
+ * @description Validates two-element string-keyed entries and applies a collision policy. Last-wins buffers all input while retaining each key's first insertion position; other policies stream.
+ * @param {EntrySourceFactory<T>} factory - Creates the iterable when the generator is first pulled.
+ * @param {KeyCollisionPolicy} policy - Duplicate handling: error throws DuplicateKeyError, first skips repeats, and last replaces values.
+ * @returns {Generator<readonly [string, T]>} Fresh valid tuples with unique keys; malformed entries throw TypeError.
+ * @example
+ * ```ts
+ * [...checkedEntries(() => [["a", 1], ["a", 2]], "last")]; // [["a", 2]]
+ * ```
+ */
 export function* checkedEntries<T>(
   factory: EntrySourceFactory<T>,
   policy: KeyCollisionPolicy,

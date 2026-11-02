@@ -3,6 +3,7 @@ import { waitFor } from "./lifetime.js";
 /** Explicit bounded async mapping; ordinary MAP remains sequential. */
 export const MAP_CONCURRENT = Symbol("map_concurrent");
 
+/** Independent running-work, input-prefetch, and result-reservation budgets for one consumption. */
 export interface ConcurrentMapOptions {
   /** Maximum running callbacks. Positive safe integer. */
   readonly concurrency: number;
@@ -16,6 +17,22 @@ export interface ConcurrentMapOptions {
 
 type Entry<T> = readonly [string, T];
 
+/**
+ * @description Validates mapping budgets immediately and copies defaults so later caller mutations
+ * do not alter a constructed stage. Invalid integer budgets throw RangeError; nonboolean ordering throws TypeError.
+ * @param {ConcurrentMapOptions} options - Requested mapping limits.
+ * @param {number} options.concurrency - Positive safe-integer maximum running callbacks.
+ * @param {number} [options.prefetch] - Positive safe-integer input budget, including a pending pull; defaults to 1.
+ * @param {number} [options.reorderBuffer] - Nonnegative result reservations beyond the delivery slot; defaults to concurrency minus one.
+ * @param {boolean} [options.ordered] - Preserve input order by default; false selects observed completion order.
+ * @returns {Required<ConcurrentMapOptions>} A fresh validated settings object.
+ * - concurrency `number` - Maximum running callbacks.
+ * - prefetch `number` - Queued inputs plus pending pull budget.
+ * - reorderBuffer `number` - Extra result reservations beyond the delivery slot.
+ * - ordered `boolean` - Whether results retain input order.
+ * @example
+ * const settings = concurrentMapOptions({ concurrency: 4, prefetch: 2 });
+ */
 export function concurrentMapOptions(options: ConcurrentMapOptions): Required<ConcurrentMapOptions> {
   const { concurrency, prefetch = 1, reorderBuffer = concurrency - 1, ordered = true } = options;
   for (const [name, value, minimum] of [
@@ -33,6 +50,25 @@ export function concurrentMapOptions(options: ConcurrentMapOptions): Required<Co
   return { concurrency, prefetch, reorderBuffer, ordered };
 }
 
+/**
+ * @description Maps keyed inputs with bounded work and result reservations, awaiting mapper results.
+ * The first observed failure stops scheduling and preserves its identity. Termination aborts a
+ * per-consumption child signal and closes upstream without waiting for non-cooperative pending work.
+ * @param {AsyncIterable<Entry<T>>} source - Keyed inputs pulled sequentially.
+ * @param {(value: T, key: string, signal: AbortSignal) => U} mapper - Callback receiving value, original key, and child cancellation signal.
+ * @param {Required<ConcurrentMapOptions>} options - Previously validated, fully populated budgets.
+ * @param {number} options.concurrency - Maximum callbacks running at once.
+ * @param {number} options.prefetch - Queued inputs plus pending pull budget.
+ * @param {number} options.reorderBuffer - Extra result reservations; zero permits only one reserved task.
+ * @param {boolean} options.ordered - True emits input order; false emits observed completion order.
+ * @param {AbortSignal} [configuredSignal] - Parent cancellation forwarded to the child, preserving its reason.
+ * @returns {AsyncGenerator<Entry<Awaited<U>>>} Awaited mapped values retaining their original keys.
+ * @example
+ * const settings = concurrentMapOptions({ concurrency: 2 });
+ * for await (const entry of concurrentEntries(source, async value => value * 2, settings)) {
+ *   consume(entry);
+ * }
+ */
 export async function* concurrentEntries<T, U>(
   source: AsyncIterable<Entry<T>>,
   mapper: (value: T, key: string, signal: AbortSignal) => U,

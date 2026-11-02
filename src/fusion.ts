@@ -13,10 +13,31 @@ class Deferred<T, A extends unknown[]> implements Iterable<T> {
   }
 }
 
+/**
+ * @description Defers generator invocation until iteration and invokes it anew for each iterator, without caching output.
+ * @param {(...args: A) => Iterable<T>} generate - Creates the iterable from the captured arguments.
+ * @param {A} args - Arguments passed unchanged on each iteration.
+ * @returns {Iterable<T>} Repeatable invocation wrapper; underlying repeatability depends on generate.
+ * @example
+ * ```ts
+ * const values = defer(function* (n: number) { yield n; }, 3);
+ * [...values]; // [3]
+ * ```
+ */
 export function defer<T, A extends unknown[]>(generate: (...args: A) => Iterable<T>, ...args: A): Iterable<T> {
   return new Deferred(generate, args);
 }
 
+/**
+ * @description Streams entries accepted by a predicate, preserving original tuples, keys, and source order.
+ * @param {Iterable<Entry<T>>} source - Keyed entries to test on demand.
+ * @param {(value: T, key: string) => boolean} predicate - Tests each value and original key once when visited.
+ * @returns {Generator<Entry<T>>} Accepted original entries.
+ * @example
+ * ```ts
+ * [...filterEntries([["a", 1], ["b", 2]], n => n > 1)]; // [["b", 2]]
+ * ```
+ */
 export function* filterEntries<T>(
   source: Iterable<Entry<T>>,
   predicate: (value: T, key: string) => boolean,
@@ -28,6 +49,16 @@ export function* filterEntries<T>(
   }
 }
 
+/**
+ * @description Transforms each value on demand while retaining its original key and position.
+ * @param {Iterable<Entry<T>>} source - Keyed values to transform.
+ * @param {(value: T, key: string) => U} fn - Maps each visited value with its original key.
+ * @returns {Generator<Entry<U>>} Fresh tuples containing unchanged keys and mapped values.
+ * @example
+ * ```ts
+ * [...mapEntries([["a", 2]], (n, key) => `${key}:${n}`)]; // [["a", "a:2"]]
+ * ```
+ */
 export function* mapEntries<T, U>(
   source: Iterable<Entry<T>>,
   fn: (value: T, key: string) => U,
@@ -87,6 +118,17 @@ function isFused<T>(source: Iterable<Entry<T>>): source is Fused<T> {
   return source instanceof Plan;
 }
 
+/**
+ * @description Adds a deferred filtering stage, composing with an existing fused plan when possible. Each iteration has independent state and preserves per-entry callback order.
+ * @param {Iterable<Entry<T>>} source - Source entries or an existing fused plan.
+ * @param {(value: T, key: string) => boolean} predicate - Tests values reaching this stage with original keys.
+ * @returns {Iterable<Entry<T>>} Lazy accepted entries without memoization.
+ * @example
+ * ```ts
+ * const kept = fuseWhere(fuseMap([["a", 2]], n => n * 2), n => n > 3);
+ * [...kept]; // [["a", 4]]
+ * ```
+ */
 export function fuseWhere<T>(
   source: Iterable<Entry<T>>,
   predicate: (value: T, key: string) => boolean,
@@ -101,6 +143,16 @@ export function fuseWhere<T>(
   }, defer(filterEntries, source, predicate));
 }
 
+/**
+ * @description Adds a deferred mapping stage, composing adjacent fused stages without inspecting mapped payloads or treating undefined as absence.
+ * @param {Iterable<Entry<T>>} source - Source entries or an existing fused plan.
+ * @param {(value: T, key: string) => U} fn - Maps values reaching this stage with their original keys.
+ * @returns {Iterable<Entry<U>>} Lazy mapped entries, recomputed independently on each iteration.
+ * @example
+ * ```ts
+ * [...fuseMap(fuseWhere([["a", 2], ["b", 0]], n => n > 0), n => String(n))]; // [["a", "2"]]
+ * ```
+ */
 export function fuseMap<T, U>(
   source: Iterable<Entry<T>>,
   fn: (value: T, key: string) => U,

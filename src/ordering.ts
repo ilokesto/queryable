@@ -3,10 +3,13 @@ export type OrderKey = boolean | number | bigint | string | null | undefined;
 
 /** A cached selector and its direction; ascending is the default. */
 export interface OrderRule<T> {
+  /** Computes one cached scalar per entry from its value and original key. */
   readonly select: (value: T, key: string) => OrderKey;
+  /** Reverses the scalar ordering when desc; omitted means asc. */
   readonly direction?: "asc" | "desc";
 }
 
+/** Nonempty lexicographic rules; later selectors break ties from earlier selectors. */
 export type OrderRules<T> = readonly [OrderRule<T>, ...OrderRule<T>[]];
 
 /** Stable multi-rule ordering with per-consumption key caching. */
@@ -66,10 +69,31 @@ function* decorate<T>(source: Iterable<Entry<T>>, rules: OrderRules<T>): Generat
   }
 }
 
+/**
+ * @description Buffers and stably sorts entries by cached selector keys. Ascending categories are boolean, number, bigint, string, null, undefined; NaN follows other numbers.
+ * @param {Iterable<Entry<T>>} source - Entries to materialize in source order.
+ * @param {OrderRules<T>} rules - Nonempty lexicographic selectors evaluated once per entry, with optional descending direction.
+ * @returns {Entry<T>[]} Sorted original entries; equal keys retain source order.
+ * @example
+ * ```ts
+ * sortByEntries([["a", 2], ["b", 1]], [{ select: n => n }]); // [["b", 1], ["a", 2]]
+ * ```
+ */
 export function sortByEntries<T>(source: Iterable<Entry<T>>, rules: OrderRules<T>): Entry<T>[] {
   return Array.from(decorate(source, rules)).sort((a, b) => compare(a, b, rules)).map(item => item.entry);
 }
 
+/**
+ * @description Selects the first minimum or maximum under lexicographic ordering without sorting, caching all rule keys once per visited entry.
+ * @param {Iterable<Entry<T>>} source - Entries to compare in source order.
+ * @param {OrderRules<T>} rules - Nonempty selector ordering including each rule's direction.
+ * @param {boolean} maximum - True selects the maximum; false selects the minimum.
+ * @returns {T | undefined} Winning original value, retaining the first tie, or undefined for empty input.
+ * @example
+ * ```ts
+ * extremum([["a", 2], ["b", 1]], [{ select: n => n }], false); // 1
+ * ```
+ */
 export function extremum<T>(source: Iterable<Entry<T>>, rules: OrderRules<T>, maximum: boolean): T | undefined {
   let best: Ranked<T> | undefined;
   for (const candidate of decorate(source, rules)) {
@@ -82,6 +106,16 @@ export function extremum<T>(source: Iterable<Entry<T>>, rules: OrderRules<T>, ma
   return best?.entry[1];
 }
 
+/**
+ * @description Rejects unsafe or fractional positions with RangeError, optionally forbidding negative positions for capacity-based operations.
+ * @param {number} position - Position or capacity to validate before consuming a source.
+ * @param {boolean} negative - Whether negative safe integers are allowed.
+ * @example
+ * ```ts
+ * validatePosition(3, false); // valid top-K capacity
+ * validatePosition(-1, true); // valid relative index
+ * ```
+ */
 export function validatePosition(position: number, negative: boolean): void {
   if (Number.isSafeInteger(position) === false || (negative === false && position < 0)) {
     throw new RangeError(negative ? "Index must be a safe integer" : "K must be a nonnegative safe integer");
@@ -133,16 +167,49 @@ function selectHeap<T>(
   return heap;
 }
 
+/**
+ * @description Retains at most k best entries in a bounded heap and returns them in stable sorted order. A zero capacity does not consume the source.
+ * @param {Iterable<Entry<T>>} source - Keyed entries to rank.
+ * @param {number} k - Already validated nonnegative safe-integer capacity.
+ * @param {OrderRules<T>} rules - Nonempty selector ordering, cached once per visited entry.
+ * @returns {Entry<T>[]} Up to k original entries in lexicographic order with stable ties.
+ * @example
+ * ```ts
+ * topEntries([["a", 3], ["b", 1], ["c", 2]], 2, [{ select: n => n }]); // [["b", 1], ["c", 2]]
+ * ```
+ */
 export function topEntries<T>(source: Iterable<Entry<T>>, k: number, rules: OrderRules<T>): Entry<T>[] {
   return selectHeap(source, k, rules, false).sort((a, b) => compare(a, b, rules)).map(item => item.entry);
 }
 
+/**
+ * @description Selects a stable ordered position using a bounded heap rather than fully sorting; negative indices count from the ordering's end.
+ * @param {Iterable<Entry<T>>} source - Entries to rank in source order for stable ties.
+ * @param {number} index - Already validated safe-integer index, zero-based or negative from the end.
+ * @param {OrderRules<T>} rules - Nonempty lexicographic selector ordering.
+ * @returns {T | undefined} Value at the ordered position, or undefined when out of range.
+ * @example
+ * ```ts
+ * nthValue([["a", 3], ["b", 1], ["c", 2]], -1, [{ select: n => n }]); // 3
+ * ```
+ */
 export function nthValue<T>(source: Iterable<Entry<T>>, index: number, rules: OrderRules<T>): T | undefined {
   const capacity = index < 0 ? -index : index + 1;
   const heap = selectHeap(source, capacity, rules, index < 0);
   return heap.length === capacity ? heap[0]?.entry[1] : undefined;
 }
 
+/**
+ * @description Buffers entries and cached selector keys, then counts those preceding the first entry with the requested key under stable ordering.
+ * @param {Iterable<Entry<T>>} source - Entries whose source positions break selector ties.
+ * @param {string} key - Original entry key to locate.
+ * @param {OrderRules<T>} rules - Nonempty lexicographic selector ordering.
+ * @returns {number | undefined} Zero-based stable rank, or undefined when the key is absent.
+ * @example
+ * ```ts
+ * rankKey([["a", 3], ["b", 1]], "a", [{ select: n => n }]); // 1
+ * ```
+ */
 export function rankKey<T>(source: Iterable<Entry<T>>, key: string, rules: OrderRules<T>): number | undefined {
   const entries = Array.from(decorate(source, rules));
   const target = entries.find(item => item.entry[0] === key);

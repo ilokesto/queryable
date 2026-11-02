@@ -8,11 +8,25 @@ export { FALLBACK } from "./core-symbols.js";
 
 type Entry<T> = readonly [string, T];
 
+/** Receives the exact upstream failure and configured signal, returning fresh replacement entries once per failed consumption. */
 export type AsyncFallbackFactory<T> = (
   error: unknown,
   signal: AbortSignal | undefined,
 ) => ReturnType<AsyncEntrySourceFactory<T>>;
 
+/**
+ * @description Preserves the upstream prefix, closes a failed upstream iterator, then switches once
+ * to normalized replacement entries. Downstream return/throw and cancellation do not trigger recovery;
+ * replacement failures propagate without another fallback.
+ * @param {AsyncIterable<Entry<T>>} source - Upstream whose next-call failures may be recovered.
+ * @param {AsyncFallbackFactory<U>} fallback - Factory receiving the original failure after upstream cleanup.
+ * @param {AbortSignal} [signal] - Cancellation preventing fallback acquisition after abort.
+ * @returns {AsyncGenerator<Entry<T | Awaited<U>>>} Original prefix followed by awaited replacement values.
+ * @example
+ * for await (const entry of fallbackEntries(source, () => [["cached", 1]])) {
+ *   consume(entry);
+ * }
+ */
 export async function* fallbackEntries<T, U>(
   source: AsyncIterable<Entry<T>>,
   fallback: AsyncFallbackFactory<U>,
@@ -111,8 +125,18 @@ async function* retryEntries<T>(
 }
 
 /**
- * Buffer each fresh-factory attempt; expose only a completely successful attempt.
- * retries is the finite number of additional attempts, not total attempts.
+ * @description Buffers each fresh-factory attempt and exposes only a completely successful attempt.
+ * Reusing a captured iterator preserves the previous failure rather than treating it as empty success.
+ * Cancellation stops retries; downstream callbacks outside the factory are never retried.
+ * @param {AsyncEntrySourceFactory<T>} factory - Acquires a fresh iterator for each attempt and consumption.
+ * @param {number} retries - Nonnegative safe-integer number of additional attempts; invalid values throw RangeError.
+ * @param {AsyncQuerySequenceOptions} [options] - Identity and cancellation settings copied at construction.
+ * @param {KeyCollisionPolicy} [options.duplicateKeys] - Error by default; first keeps the first value, last buffers and keeps the last value in first-key order.
+ * @param {AbortSignal} [options.signal] - Cancellation shared across attempts.
+ * @returns {AsyncQuerySequence<Awaited<T>>} Repeatable deferred query buffering a full successful attempt.
+ * @example
+ * const query = createRetryAsyncQuerySequence(() => loadEntries(), 2);
+ * const values = await query[VALUES]();
  */
 export function createRetryAsyncQuerySequence<T>(
   factory: AsyncEntrySourceFactory<T>,

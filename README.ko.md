@@ -1,5 +1,7 @@
 # @ilokesto/queryable
 
+기여자는 [JSDOC.md](./JSDOC.md)의 영어 API 문서 계약을 따르고 `pnpm lint:jsdoc`를 실행합니다. 전체 `pnpm test`에도 의미 기반 문서 검사가 포함됩니다.
+
 공유 Symbol 메서드로 레코드를 조회하고, 순서가 있는 시퀀스와 선택적 지연 평가를 조합합니다.
 
 ![Public npm target](https://img.shields.io/badge/status-public_npm_target-555?style=flat)

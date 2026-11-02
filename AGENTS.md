@@ -7,6 +7,10 @@ sibling checkout paths.
 - Keep the current package version and public npm access. Consumer-facing changes require a
   root Changeset; release-automation setup alone does not bump the version.
 - Keep runtime dependencies empty and preserve shared methods across query chains.
+- Follow [JSDOC.md](./JSDOC.md) for English semantic documentation of every
+  runtime export and own public operator, including Symbol-keyed shared methods.
+  Keep useful field documentation on type-only declarations and retain comments
+  in emitted declarations. `pnpm lint:jsdoc` is part of `pnpm test:tooling`.
 - `PICK` selects record keys, not fields within each value; `SELECT` was removed.
 - Records use native object ordering; `SORT` returns a sequence preserving comparator order.
 - `LAZY` is a live, repeatable view without memoization. Terminal calls execute pending work.
