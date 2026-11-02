@@ -319,7 +319,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [VALUES](this: Source<T>): T[];
   /**
    * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
-   * @param {BooleanConstructor} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {BooleanConstructor} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Truthy<T> | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
    * @example
    * ```ts
@@ -330,7 +330,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [FIND](this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
   /**
    * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
-   * @param {(value: T, key: string) => false} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => false} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
    * @example
    * ```ts
@@ -341,7 +341,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [FIND](this: Source<T>, predicate: (value: T, key: string) => false): undefined;
   /**
    * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
-   * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {S | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
    * @example
    * ```ts
@@ -352,7 +352,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [FIND]<S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
   /**
    * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {T | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
    * @example
    * ```ts
@@ -363,7 +363,7 @@ interface Terminals<T> extends Source<T>, LookupTerminals<T, Source<T>> {
   [FIND](this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
   /**
    * @description Stop at the first matching entry; empty input returns false.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {boolean} Stop at the first matching entry; empty input returns false.
    * @example
    * ```ts
@@ -605,7 +605,7 @@ interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, 
   [GROUP_BY_MAP]<K>(this: Result<T, M>, keyFn: (value: T, key: string) => K): Map<K, Result<T, M>>;
   /**
    * @description Keep matching entries and original keys; type guards and Boolean preserve narrowing.
-   * @param {BooleanConstructor} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {BooleanConstructor} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Result<Truthy<T>, M>} Keep matching entries and original keys; type guards and Boolean preserve narrowing.
    * @example
    * ```ts
@@ -616,7 +616,7 @@ interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, 
   [WHERE](this: Result<T, M>, predicate: BooleanConstructor): Result<Truthy<T>, M>;
   /**
    * @description Keep matching entries and original keys; type guards and Boolean preserve narrowing.
-   * @param {(value: T, key: string) => false} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => false} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Result<never, M>} Keep matching entries and original keys; type guards and Boolean preserve narrowing.
    * @example
    * ```ts
@@ -627,7 +627,7 @@ interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, 
   [WHERE](this: Result<T, M>, predicate: (value: T, key: string) => false): Result<never, M>;
   /**
    * @description Keep matching entries and original keys; type guards and Boolean preserve narrowing.
-   * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Result<S, M>} Keep matching entries and original keys; type guards and Boolean preserve narrowing.
    * @example
    * ```ts
@@ -638,7 +638,7 @@ interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, 
   [WHERE]<S extends T>(this: Result<T, M>, predicate: (value: T, key: string) => value is S): Result<S, M>;
   /**
    * @description Keep matching entries and original keys; type guards and Boolean preserve narrowing.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Result<T, M>} Keep matching entries and original keys; type guards and Boolean preserve narrowing.
    * @example
    * ```ts
@@ -704,7 +704,7 @@ interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, 
   [SKIP](this: Result<T, M>, n: number): Result<T, M>;
   /**
    * @description Keep the matching prefix and stop at the first false predicate, preserving type guard narrowing.
-   * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Result<S, M>} Keep the matching prefix and stop at the first false predicate, preserving type guard narrowing.
    * @example
    * ```ts
@@ -715,7 +715,7 @@ interface Operations<T, M extends Mode> extends Terminals<T>, JoinOperations<T, 
   [TAKE_WHILE]<S extends T>(this: Result<T, M>, predicate: (value: T, key: string) => value is S): Result<S, M>;
   /**
    * @description Keep the matching prefix and stop at the first false predicate, preserving type guard narrowing.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {Result<T, M>} Keep the matching prefix and stop at the first false predicate, preserving type guard narrowing.
    * @example
    * ```ts
@@ -880,7 +880,7 @@ function propertyGroupKey<T>(value: T, property: string): string | undefined {
 
 /**
  * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
- * @param {BooleanConstructor} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {BooleanConstructor} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {Truthy<T> | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
  * @example
  * ```ts
@@ -891,7 +891,7 @@ function propertyGroupKey<T>(value: T, property: string): string | undefined {
 function find<T>(this: Source<T>, predicate: BooleanConstructor): Truthy<T> | undefined;
 /**
  * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
- * @param {(value: T, key: string) => false} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => false} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
  * @example
  * ```ts
@@ -902,7 +902,7 @@ function find<T>(this: Source<T>, predicate: BooleanConstructor): Truthy<T> | un
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => false): undefined;
 /**
  * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
- * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {S | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
  * @example
  * ```ts
@@ -913,7 +913,7 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => false): 
 function find<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
 /**
  * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
- * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {T | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
  * @example
  * ```ts
@@ -924,7 +924,7 @@ function find<T, S extends T>(this: Source<T>, predicate: (value: T, key: string
 function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean): T | undefined;
 /**
  * @description Return the first matching value and stop; no match returns undefined and type guards narrow the result.
- * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {T | undefined} Return the first matching value and stop; no match returns undefined and type guards narrow the result.
  * @example
  * ```ts
@@ -943,7 +943,7 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean)
 
 /**
  * @description Return the sole matching value or undefined when absent; throw when a second match exists.
- * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {S | undefined} Return the sole matching value or undefined when absent; throw when a second match exists.
  * @example
  * ```ts
@@ -954,7 +954,7 @@ function find<T>(this: Source<T>, predicate: (value: T, key: string) => boolean)
 function lookupSingle<T, S extends T>(this: Source<T>, predicate: (value: T, key: string) => value is S): S | undefined;
 /**
  * @description Return the sole matching value or undefined when absent; throw when a second match exists.
- * @param {(value: T, key: string) => boolean} [predicate] - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => boolean} [predicate] - Predicate receiving each tested value and its original key in query order.
  * @returns {T | undefined} Return the sole matching value or undefined when absent; throw when a second match exists.
  * @example
  * ```ts
@@ -965,7 +965,7 @@ function lookupSingle<T, S extends T>(this: Source<T>, predicate: (value: T, key
 function lookupSingle<T>(this: Source<T>, predicate?: (value: T, key: string) => boolean): T | undefined;
 /**
  * @description Return the sole matching value or undefined when absent; throw when a second match exists.
- * @param {(value: T, key: string) => boolean} [predicate] - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => boolean} [predicate] - Predicate receiving each tested value and its original key in query order.
  * @returns {T | undefined} Return the sole matching value or undefined when absent; throw when a second match exists.
  * @example
  * ```ts
@@ -979,7 +979,7 @@ function lookupSingle<T>(this: Source<T>, predicate?: (value: T, key: string) =>
 
 /**
  * @description Return a fresh tuple for the first matching entry, or undefined when no entry matches.
- * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+ * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
  * @returns {[string, S] | undefined} Return a fresh tuple for the first matching entry, or undefined when no entry matches.
  * - 0 `string` - Original entry key when a match exists.
  * - 1 `S` - Matching value when a match exists.

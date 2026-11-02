@@ -57,7 +57,7 @@ export interface WindowOperations<T, Receiver> {
   [PAIRWISE](this: Receiver): QuerySequence<EntryPair<T>>;
   /**
    * @description Split at matching delimiter entries, excluding delimiters and empty groups.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {QuerySequence<EntryBuffer<T>>} Split at matching delimiter entries, excluding delimiters and empty groups.
    * @example
    * ```ts

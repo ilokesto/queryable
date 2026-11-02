@@ -18,7 +18,7 @@ type Result<T, M extends "record" | "sequence"> = M extends "record" ? Queryable
 export interface Stateful<T, M extends "record" | "sequence"> {
   /**
    * @description Eagerly split into matching and nonmatching snapshots, evaluating the predicate once per entry.
-   * @param {(value: T, key: string) => value is S} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => value is S} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {[Result<S, M>, Result<T, M>]} Eagerly split into matching and nonmatching snapshots, evaluating the predicate once per entry.
    * - 0 `QuerySequence<S>` - Matching entries with narrowed values when using a type guard.
    * - 1 `QuerySequence<T>` - Nonmatching entries retaining the original value type.

@@ -44,7 +44,7 @@ export interface LookupTerminals<T, Receiver> {
   [AT](this: Receiver, index: number): T | undefined;
   /**
    * @description Return the sole matching value or undefined when absent; throw when a second match exists.
-   * @param {(value: T, key: string) => boolean} [predicate] - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} [predicate] - Predicate receiving each tested value and its original key in query order.
    * @returns {S | undefined} Return the sole matching value or undefined when absent; throw when a second match exists.
    * @example
    * ```ts
@@ -57,7 +57,7 @@ export interface LookupTerminals<T, Receiver> {
   [SINGLE](this: Receiver, predicate?: (value: T, key: string) => boolean): T | undefined;
   /**
    * @description Stop on the first false predicate; empty input returns true.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {boolean} Stop on the first false predicate; empty input returns true.
    * @example
    * ```ts
@@ -78,7 +78,7 @@ export interface LookupTerminals<T, Receiver> {
   [IS_EMPTY](this: Receiver): boolean;
   /**
    * @description Test for a value using SameValueZero equality, including NaN and reference identity.
-   * @param {T} value - Value to compare or use as the empty-input fallback.
+   * @param {T} value - Value to find using SameValueZero equality, including NaN and reference identity.
    * @returns {boolean} Test for a value using SameValueZero equality, including NaN and reference identity.
    * @example
    * ```ts
@@ -89,7 +89,7 @@ export interface LookupTerminals<T, Receiver> {
   [INCLUDES](this: Receiver, value: T): boolean;
   /**
    * @description Return a fresh tuple for the first matching entry, or undefined when no entry matches.
-   * @param {(value: T, key: string) => boolean} predicate - Test (value, originalKey) in query order; a type guard narrows matching values.
+   * @param {(value: T, key: string) => boolean} predicate - Predicate receiving each tested value and its original key in query order.
    * @returns {[string, S] | undefined} Return a fresh tuple for the first matching entry, or undefined when no entry matches.
    * - 0 `string` - Original entry key when a match exists.
    * - 1 `T` - Matching value when a match exists.
@@ -104,7 +104,7 @@ export interface LookupTerminals<T, Receiver> {
   [FIND_ENTRY](this: Receiver, predicate: (value: T, key: string) => boolean): [string, T] | undefined;
   /**
    * @description Read the first value, retaining stored undefined; use the fallback only when no entry exists.
-   * @param {U} value - Value to compare or use as the empty-input fallback.
+   * @param {U} value - Fallback returned only when no entry exists; stored undefined remains a value.
    * @returns {T | U} Read the first value, retaining stored undefined; use the fallback only when no entry exists.
    * @example
    * ```ts
