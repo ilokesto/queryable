@@ -641,6 +641,26 @@ export function createAsyncQuerySequence<T>(
   }
 }
 
+/**
+ * @internal
+ * @description Creates an internal adapter query whose factory guarantees unique keys per consumption.
+ * Entries are validated and values awaited, but no consumed-key history is retained.
+ * Callers supplying arbitrary keys must use createAsyncQuerySequence instead.
+ * @param {AsyncEntrySourceFactory<T>} factory - Internal source generating unique keys with a fresh cursor per consumption.
+ * @param {Pick<AsyncQuerySequenceOptions, "signal">} [options] - Cancellation settings.
+ * @param {AbortSignal} [options.signal] - Cancellation forwarded through acquisition, pulls, and callbacks.
+ * @returns {AsyncQuerySequence<Awaited<T>>} Deferred query sharing the ordinary async operators and cleanup behavior.
+ * @example
+ * const query = createUniqueAsyncQuerySequence(() => [["0", Promise.resolve(42)]]);
+ * const first = await query[FIRST]();
+ */
+export function createUniqueAsyncQuerySequence<T>(
+  factory: AsyncEntrySourceFactory<T>,
+  options: Pick<AsyncQuerySequenceOptions, "signal"> = {},
+): AsyncQuerySequence<Awaited<T>> {
+  return sequence(defer(normalizedEntries, factory, options.signal), options.signal);
+}
+
 async function* entryView<T>(query: AsyncQuerySequence<T>): AsyncGenerator<[string, T]> {
   for await (const [key, value] of query[ITERATE]()) {
     yield [key, value];

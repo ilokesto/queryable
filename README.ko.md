@@ -51,6 +51,9 @@ upstream을 버퍼링할 수 있고 그룹화는 즉시 실행됩니다.
 `createAsyncQuerySequence`에 소비마다 새 iterator를 제공하고, signal을
 외부 작업에 전달하며 iterator 정리 단계에서 자원을 해제하세요.
 
+스트림 어댑터의 기본 ordinal 키는 유일하므로 소비한 키 이력을 보관하지 않습니다.
+사용자 지정 `key` 콜백은 중복 검사를 유지하며 이전에 내보낸 키를 추적합니다.
+
 ## 더 알아보기
 
 - [실행 가능한 이행 예제](./tests/fixtures/consumer/migration-example.ts)
