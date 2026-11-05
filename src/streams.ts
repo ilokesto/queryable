@@ -1,4 +1,4 @@
-import { createAsyncQuerySequence } from "./async.js";
+import { createAsyncQuerySequence, createUniqueAsyncQuerySequence } from "./async.js";
 import type { AsyncQuerySequence } from "./async.js";
 
 type Entry<T> = readonly [string, T];
@@ -73,7 +73,8 @@ function eventSequence<T>(options: EventSourceOptions<T>, connect: Connect<T>): 
   if (overflow !== "error" && overflow !== "drop-oldest" && overflow !== "drop-newest") {
     throw new TypeError(`Unsupported event overflow policy: ${String(overflow)}`);
   }
-  return createAsyncQuerySequence(() => {
+  const create = key === undefined ? createUniqueAsyncQuerySequence : createAsyncQuerySequence;
+  return create(() => {
     const queue: Entry<T>[] = [];
     const removers: (() => void)[] = [];
     let state: "open" | "complete" | "error" | "return" = "open";
@@ -331,7 +332,8 @@ export function fromReadableStream<T>(
   options: StreamSourceOptions<T> = {},
 ): AsyncQuerySequence<Awaited<T>> {
   const { signal, key } = options;
-  return createAsyncQuerySequence(async function* () {
+  const create = key === undefined ? createUniqueAsyncQuerySequence : createAsyncQuerySequence;
+  return create(async function* () {
     signal?.throwIfAborted();
     const reader = factory(signal).getReader();
     let closing: Promise<void> | undefined;

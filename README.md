@@ -51,6 +51,9 @@ selected own enumerable keys. For async sources, provide a fresh iterator per
 consumption to `createAsyncQuerySequence`, forward its signal to external work,
 and release resources in iterator cleanup.
 
+Stream adapters generate unique ordinal keys without retaining consumed-key history.
+Custom `key` callbacks retain collision checking and track previously emitted keys.
+
 ## Further reading
 
 - [Executable migration example](./tests/fixtures/consumer/migration-example.ts)
