@@ -1,5 +1,11 @@
 # @ilokesto/queryable
 
+## 0.1.3
+
+### Patch Changes
+
+- 0328450: Avoid retaining consumed key history for stream adapters using internally generated unique ordinal keys. Preserve duplicate-key validation for caller-provided key callbacks and the public async sequence factory.
+
 ## 0.1.2
 
 ### Patch Changes
